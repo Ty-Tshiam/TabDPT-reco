@@ -1,0 +1,31 @@
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Santander Raw Datasets & Archives (>100MB)
+santander-product-recommendation/
+data/santander-product-recommendation/
+*.zip
+*.csv
+
+# Spark / Parquet outputs
+output/
+data/output/
+data/data_pull/
+*.parquet
+*.crc
+_SUCCESS
+
+# IDEs & Notebooks
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
