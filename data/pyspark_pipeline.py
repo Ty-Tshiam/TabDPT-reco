@@ -20,8 +20,8 @@ spark = SparkSession.builder \
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TRAIN_PATH = os.path.join(BASE_DIR, "santander-product-recommendation", "train_ver2.csv")
 TEST_PATH = os.path.join(BASE_DIR, "santander-product-recommendation", "test_ver2.csv")
-CLEAN_PARQUET_PATH = os.path.join(os.path.dirname(BASE_DIR), "output", "data.parquet")
-OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), "output")
+CLEAN_PARQUET_PATH = os.path.join(BASE_DIR, "output", "data.parquet")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 # ==============================================================================
 # Step 2: Define Column Mappings & Target Specifications
@@ -226,16 +226,6 @@ def cap_categories_for_tabdpt(df, top_channels=None, top_countries=None):
     - residence_country: Top 30 + 'OTHER'
     - province_code: coalesced with 'UNKNOWN' (<= 53 categories)
     """
-    if top_channels is None:
-        top_channels = [
-            row["entry_channel"] for row in df.filter(F.col("entry_channel").isNotNull())
-            .groupBy("entry_channel").count().orderBy(F.desc("count")).limit(80).collect()
-        ]
-    if top_countries is None:
-        top_countries = [
-            row["residence_country"] for row in df.filter(F.col("residence_country").isNotNull())
-            .groupBy("residence_country").count().orderBy(F.desc("count")).limit(30).collect()
-        ]
 
     df = (
         df
@@ -252,7 +242,7 @@ def cap_categories_for_tabdpt(df, top_channels=None, top_countries=None):
             F.coalesce(F.col("province_code"), F.lit("UNKNOWN"))
         )
     )
-    return df, top_channels, top_countries
+    return df
 
 
 def engineer_tabdpt_features(df, explode_multi_targets: bool = True):
@@ -420,33 +410,41 @@ if __name__ == "__main__":
         print("Applying cleaning pipeline...")
         df_clean = clean_pipeline(df_raw)
 
+    # Temporal split: May 2016 (2016-05-28) is the evaluation/test set
+    print("Splitting dataset into Training (< 2016-05-28) and Test (2016-05-28)...")
+    df_test_may2016 = df_clean.filter(F.col("snapshot_date") == "2016-05-28")
+    df_train = df_clean.filter(F.col("snapshot_date") < "2016-05-28")
+
     print("Capping high cardinality categoricals to <= 100 categories...")
     # Derive capping rules strictly from data prior to May 2016 to prevent temporal leakage
-    train_slice = df_clean.filter(F.col("snapshot_date") < "2016-05-28")
+
     top_channels = [
-        row["entry_channel"] for row in train_slice.filter(F.col("entry_channel").isNotNull())
-        .groupBy("entry_channel").count().orderBy(F.desc("count")).limit(80).collect()
+        row["entry_channel"] for row in df_train.filter(F.col("entry_channel").isNotNull())
+        .groupBy("entry_channel")
+        .count()
+        .orderBy(F.desc("count"))
+        .limit(80)
+        .collect()
     ]
     top_countries = [
-        row["residence_country"] for row in train_slice.filter(F.col("residence_country").isNotNull())
-        .groupBy("residence_country").count().orderBy(F.desc("count")).limit(30).collect()
+        row["residence_country"] for row in df_train.filter(F.col("residence_country").isNotNull())
+        .groupBy("residence_country")
+        .count()
+        .orderBy(F.desc("count"))
+        .limit(30)
+        .collect()
     ]
 
-    df_clean, _, _ = cap_categories_for_tabdpt(df_clean, top_channels, top_countries)
+    df_train = cap_categories_for_tabdpt(df_train, top_channels, top_countries)
 
     print("Extracting TabDPT features and 16-class targets...")
-    df_features = engineer_tabdpt_features(df_clean, explode_multi_targets=True)
+    df_features = engineer_tabdpt_features(df_train, explode_multi_targets=True)
 
     non_feature_cols = ["customer_id", "snapshot_date", "target_class"]
     feature_cols = [c for c in df_features.columns if c not in non_feature_cols]
 
     print(f"Total Columns in Output: {len(df_features.columns)}")
     print(f"Total Predictive Features: {len(feature_cols)} (Limit <= 100: {len(feature_cols) <= 100})")
-
-    # Temporal split: May 2016 (2016-05-28) is the evaluation/test set
-    print("Splitting dataset into Training (< 2016-05-28) and Test (2016-05-28)...")
-    df_test_may2016 = df_features.filter(F.col("snapshot_date") == "2016-05-28")
-    df_train = df_features.filter(F.col("snapshot_date") < "2016-05-28")
 
     test_out_path = os.path.join(OUTPUT_DIR, "tabdpt_test_may2016.parquet")
     train_out_path = os.path.join(OUTPUT_DIR, "tabdpt_train.parquet")
