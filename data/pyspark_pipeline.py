@@ -446,8 +446,8 @@ if __name__ == "__main__":
     print(f"Total Columns in Output: {len(df_features.columns)}")
     print(f"Total Predictive Features: {len(feature_cols)} (Limit <= 100: {len(feature_cols) <= 100})")
 
-    test_out_path = os.path.join(OUTPUT_DIR, "tabdpt_test_may2016.parquet")
-    train_out_path = os.path.join(OUTPUT_DIR, "tabdpt_train.parquet")
+    test_out_path = os.path.join(OUTPUT_DIR, "tabdpt_test_may2016")
+    train_out_path = os.path.join(OUTPUT_DIR, "tabdpt_train")
 
     print(f"Saving May 2016 evaluation set to: {test_out_path}")
     df_test_may2016.write.parquet(test_out_path, mode="overwrite")
