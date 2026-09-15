@@ -20,7 +20,7 @@ spark = SparkSession.builder \
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TRAIN_PATH = os.path.join(BASE_DIR, "santander-product-recommendation", "train_ver2.csv")
 TEST_PATH = os.path.join(BASE_DIR, "santander-product-recommendation", "test_ver2.csv")
-CLEAN_PARQUET_PATH = os.path.join(BASE_DIR, "output", "data.parquet")
+CLEAN_PARQUET_PATH = os.path.join(BASE_DIR, "output", "clean_raw")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 # ==============================================================================
@@ -165,11 +165,6 @@ def clean_pipeline(df):
             .otherwise("Unknown")
         )
         .withColumn("age", F.col("age").cast(IntegerType()))
-        .withColumn(
-            "age",
-            F.when((F.col("age") >= 18) & (F.col("age") <= 100), F.col("age"))
-            .otherwise(None)
-        )
         .withColumn("seniority_months", F.col("seniority_months").cast(IntegerType()))
         .withColumn(
             "seniority_months",
@@ -379,8 +374,8 @@ def engineer_tabdpt_features(df, explode_multi_targets: bool = True):
     # Drop raw target products at time t to prevent label leakage
     df = df.drop(*ALL_24_PRODUCTS)
 
-    # Drop redundant non-feature columns
-    df = df.drop("join_date", "last_date_primary_customer", "address_type", "province_name", "is_active")
+    # Drop redundant non-feature columns""
+    df = df.drop("join_date", "last_date_primary_customer", "address_type", "province_name", "is_active", "gross_household_income")
 
     return df
 
@@ -448,11 +443,15 @@ if __name__ == "__main__":
 
     test_out_path = os.path.join(OUTPUT_DIR, "tabdpt_test_may2016")
     train_out_path = os.path.join(OUTPUT_DIR, "tabdpt_train")
+    features_out_path = os.path.join(OUTPUT_DIR, "features")
 
     print(f"Saving May 2016 evaluation set to: {test_out_path}")
     df_test_may2016.write.parquet(test_out_path, mode="overwrite")
 
     print(f"Saving training set to: {train_out_path}")
     df_train.write.parquet(train_out_path, mode="overwrite")
+
+    print(f"Saving transformed features set to: {features_out_path}")
+    df_features.write.parquet(features_out_path, mode="overwrite")
 
     print("Pipeline completed successfully!")
