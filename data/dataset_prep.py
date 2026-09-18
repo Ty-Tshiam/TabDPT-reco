@@ -5,12 +5,12 @@
 import os
 import json
 import polars as pl
-import torch
+import numpy
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(5)
 
-def categorical_dictionary(cats, df):
+def get_categorical_dictionary(cats, df):
     cat_dict = {}
 
     for cat in cats:
@@ -23,16 +23,7 @@ def categorical_dictionary(cats, df):
     
     return cat_dict
 
-def get_normalize_dictionary(nums, df):
-    num_dict = {}
-    for num in nums:
-        num_dict[num] = {
-            "mean" : df.select(pl.col(num).mean()).collect().item(),
-            "std" : df.select(pl.col(num).std()).collect().item()
-            }
-
-    return num_dict
-
+def 
 path = os.path.join("output", "features", "*.parquet")
 df = pl.scan_parquet(path)
 
@@ -42,8 +33,6 @@ non_x =  ["customer_id", "snapshot_date", "target_class"]
 schema = df.collect_schema()
 
 x_cats = []
-x_nums = []
-x_binary = []  # Optional: track 0/1 flags separately
 
 # Columns known to be categorical even if stored as numbers
 explicit_cats = {"province_code", "customer_relation_primary"}
@@ -54,22 +43,8 @@ for col, dtype in schema.items():
     # 1. String / Categorical columns
     if dtype in (pl.String, pl.Categorical) or col in explicit_cats:
         x_cats.append(col)
-    # 2. Binary flags (ByteType in Spark -> Int8 in Polars, or prefix conventions)
-    elif dtype == pl.Int8 or col.startswith("has_") or col.startswith("is_"):
-        x_binary.append(col)
-        # If your model treats binary as numeric: x_nums.append(col)
-        # If your model treats binary as categorical: x_cats.append(col)
-    # 3. Continuous and counts (Float64, Float32, Int32, Int64)
-    elif dtype.is_numeric():
-        x_nums.append(col)
 
-# If treating binary flags as numeric (common in TabDPT / deep tabular models):
-x_nums.extend(x_binary)
-
-#print(f"Categorical features ({len(x_cats)}):", x_cats)
-#print(f"Numerical features   ({len(x_nums)}):", x_nums)
-
-mappings = categorical_dictionary(x_cats, df)
+mappings = get_categorical_dictionary(x_cats, df)
 
 mappings['customer_relation_primary'] = {1: 0, 99: 1, 0: 2}
 
@@ -93,26 +68,28 @@ for col, mapping in mappings.items():
 
 df = df.with_columns(exprs)
 
-all_xs = x_nums + x_cats
-mappings_nums = get_normalize_dictionary(all_xs, df)
+cols = df.columns
+cols = [c for c in df.columns if c not in non_x]
+features = df.drop(non_x).collect().to_numpy().flatten()
+n_mean = features.mean()
+n_std = features.std()
 
-exprs = []
-for col in x_nums:
-    mapping = mappings_nums[col]
-    exprs.append(
-        ((pl.col(col) - mapping["mean"]) / mapping["std"]).alias(col)
-    )
+df = df.with_columns((pl.col(cols) - n_mean) / n_std)
 
-df = df.with_columns(exprs)
+n_map = {
+    "mean":n_mean,
+    "std":n_std
+}
+
 
 os.makedirs("mappings", exist_ok=True)
-cat_path = os.path.join("mappings", "mappings_cats.json")
-num_path = os.path.join("mappings", "mappings_nums.json")
+cat_path = os.path.join("mappings", "mappings.json")
+num_path = os.path.join("mappings", "normalize_map.json")
 
 with open(cat_path, "w") as f:
     json.dump(mappings, f, indent=2)
 with open(num_path, "w") as f:
-    json.dump(mappings_nums, f, indent = 2)
+    json.dump(n_map, f, indent = 2)
 
 os.makedirs("output/dataset", exist_ok=True)
 
