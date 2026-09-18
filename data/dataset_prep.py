@@ -5,9 +5,33 @@
 import os
 import json
 import polars as pl
+import torch
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(5)
+
+def categorical_dictionary(cats, df):
+    cat_dict = {}
+
+    for cat in cats:
+        #dtype = set(df.select(pl.col(cat)).collect().dtypes)[0]
+        #if dtype
+        order = df.select(pl.col(cat), pl.col("customer_id"), pl.col("snapshot_date")).group_by(cat).len() .sort("len", descending = True).collect()
+        cat_dict[cat] = {}
+        for i in range(len(order)):
+            cat_dict[cat][order[i, 0]] = i
+    
+    return cat_dict
+
+def get_normalize_dictionary(nums, df):
+    num_dict = {}
+    for num in nums:
+        num_dict[num] = {
+            "mean" : df.select(pl.col(num).mean()).collect().item(),
+            "std" : df.select(pl.col(num).std()).collect().item()
+            }
+
+    return num_dict
 
 path = os.path.join("output", "features", "*.parquet")
 df = pl.scan_parquet(path)
@@ -45,19 +69,6 @@ x_nums.extend(x_binary)
 #print(f"Categorical features ({len(x_cats)}):", x_cats)
 #print(f"Numerical features   ({len(x_nums)}):", x_nums)
 
-def categorical_dictionary(cats, df):
-    cat_dict = {}
-
-    for cat in cats:
-        #dtype = set(df.select(pl.col(cat)).collect().dtypes)[0]
-        #if dtype
-        order = df.select(pl.col(cat), pl.col("customer_id"), pl.col("snapshot_date")).group_by(cat).len() .sort("len", descending = True).collect()
-        cat_dict[cat] = {}
-        for i in range(len(order)):
-            cat_dict[cat][order[i, 0]] = i
-    
-    return cat_dict
-
 mappings = categorical_dictionary(x_cats, df)
 
 mappings['customer_relation_primary'] = {1: 0, 99: 1, 0: 2}
@@ -82,23 +93,14 @@ for col, mapping in mappings.items():
 
 df = df.with_columns(exprs)
 
-def get_normalize_dictionary(nums, df):
-    num_dict = {}
-    for num in nums:
-        num_dict[num] = {
-            "mean" : df.select(pl.col(num).mean()).collect().item(),
-            "std" : df.select(pl.col(num).std()).collect().item()
-            }
-
-    return num_dict
-
-mappings_nums = get_normalize_dictionary(x_nums, df)
+all_xs = x_nums + x_cats
+mappings_nums = get_normalize_dictionary(all_xs, df)
 
 exprs = []
-for num in x_nums:
-    mapping = mappings_nums[num]
+for col in x_nums:
+    mapping = mappings_nums[col]
     exprs.append(
-        ((pl.col(num) - mapping["mean"]) / mapping["std"]).alias(num)
+        ((pl.col(col) - mapping["mean"]) / mapping["std"]).alias(col)
     )
 
 df = df.with_columns(exprs)
@@ -112,9 +114,8 @@ with open(cat_path, "w") as f:
 with open(num_path, "w") as f:
     json.dump(mappings_nums, f, indent = 2)
 
-print("printing")
-
 os.makedirs("output/dataset", exist_ok=True)
 
 path = os.path.join("output", "dataset", "dataset_prep.parquet")
 df.sink_parquet(path)
+

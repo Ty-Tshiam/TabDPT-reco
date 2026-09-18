@@ -12,6 +12,7 @@ spark = SparkSession.builder \
     .master("local[*]") \
     .config("spark.driver.memory", "6g") \
     .config("spark.executor.memory", "6g") \
+    .config("spark.local.dir", "/tmp/spark-local")  \
     .config("spark.sql.shuffle.partitions", "32") \
     .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
     .getOrCreate()
