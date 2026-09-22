@@ -27,6 +27,10 @@ from src.config import (
     CLEAN_TEST_PARQUET,
     TEST_TARGETS_PARQUET,
     FEATURES_PARQUET,
+    WRITE_CLEAN_TRAIN_PARQUET,
+    WRITE_CLEAN_TEST_PARQUET,
+    WRITE_TEST_TARGETS_PARQUET,
+    WRITE_FEATURES_PARQUET,
     COLUMN_MAPPING,
     SELECTED_15_TARGETS,
     TARGET_TO_INDEX,
@@ -422,10 +426,10 @@ def run_stage1(spark: SparkSession = None):
             df_train = df_clean.filter(F.col("snapshot_date") < "2016-05-28")
 
             print(f"[Stage 1] Writing cleaned evaluation test set to: {CLEAN_TEST_PARQUET}")
-            df_test_may2016.write.parquet(str(CLEAN_TEST_PARQUET), mode="overwrite")
+            df_test_may2016.write.parquet(str(WRITE_CLEAN_TEST_PARQUET), mode="overwrite")
 
             print(f"[Stage 1] Writing cleaned train set to: {CLEAN_TRAIN_PARQUET}")
-            df_train.write.parquet(str(CLEAN_TRAIN_PARQUET), mode="overwrite")
+            df_train.write.parquet(str(WRITE_CLEAN_TRAIN_PARQUET), mode="overwrite")
 
         # Ensure ground-truth test targets are computed and saved separately
         test_targets_dir = str(TEST_TARGETS_PARQUET.parent)
@@ -435,7 +439,7 @@ def run_stage1(spark: SparkSession = None):
                 df_test_may2016 = spark.read.parquet(str(CLEAN_TEST_PARQUET))
             df_apr = df_train.filter(F.col("snapshot_date") == "2016-04-28")
             df_test_targets = extract_test_targets(df_test_may2016, df_apr)
-            df_test_targets.write.parquet(test_targets_dir, mode="overwrite")
+            df_test_targets.write.parquet(str(WRITE_TEST_TARGETS_PARQUET), mode="overwrite")
 
         print("[Stage 1] Computing top channels and countries from training partition...")
         top_channels = [
@@ -462,7 +466,7 @@ def run_stage1(spark: SparkSession = None):
         print(f"[Stage 1] Total Feature Columns: {len(feature_cols)} (Limit <= 100: {len(feature_cols) <= 100})")
 
         print(f"[Stage 1] Saving engineered features to: {FEATURES_PARQUET}")
-        df_features.write.parquet(str(FEATURES_PARQUET), mode="overwrite")
+        df_features.write.parquet(str(WRITE_FEATURES_PARQUET), mode="overwrite")
         print("[Stage 1] Completed successfully!")
 
     finally:

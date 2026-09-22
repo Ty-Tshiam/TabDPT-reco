@@ -295,7 +295,7 @@ def prepare_pass_through_tensors(query):
 
     return context.unsqueeze(0), query.unsqueeze(0), y.unsqueeze(0)
     
-
+    
 
 # ==============================================================================
 # Pipeline Execution & Demonstration for Customer 1166753
@@ -321,13 +321,10 @@ if __name__ == "__main__":
 
     context, query, y_train = prepare_pass_through_tensors(query)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    if device == "cpu":
-        context = context.to(dtype = torch.float32).squeeze(0).numpy()
-        query = query.to(dtype = torch.float32).squeeze(0).numpy()
-        y_train = y_train.to(dtype = torch.float32).squeeze(0).numpy()
-
-    
+    context = context.to(dtype = torch.float32).squeeze(0).numpy()
+    query = query.to(dtype = torch.float32).squeeze(0).numpy()
+    y_train = y_train.to(dtype = torch.float32).squeeze(0).numpy()
+        
     model = TabDPTClassifier()
     model.fit(context, y_train)
     y_pred = model.predict(
@@ -338,6 +335,9 @@ if __name__ == "__main__":
         permute_classes=True,
         seed = 42
     )
+    print(y_pred)
+    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
+    print(target_info)
 
 
 

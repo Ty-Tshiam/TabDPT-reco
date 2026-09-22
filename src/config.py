@@ -20,16 +20,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 # 1. Raw Datasets (Raw CSVs and compressed archive)
-RAW_DATA_DIR = DATA_DIR / "raw"
+RAW_DATA_DIR = DATA_DIR / "raw" / "santander-product-recommendation"
 RAW_ZIP_PATH = RAW_DATA_DIR / "santander-product-recommendation.zip"
 RAW_TRAIN_CSV = RAW_DATA_DIR / "train_ver2.csv"
 RAW_TEST_CSV = RAW_DATA_DIR / "test_ver2.csv"
 
 # 2. Processed Parquet Datasets across pipeline stages
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
+WRITE_CLEAN_TRAIN_PARQUET = PROCESSED_DATA_DIR / "train_clean"
 CLEAN_TRAIN_PARQUET = PROCESSED_DATA_DIR / "train_clean" / "*.parquet"
+WRITE_CLEAN_TEST_PARQUET = PROCESSED_DATA_DIR / "test_may2016_clean"
 CLEAN_TEST_PARQUET = PROCESSED_DATA_DIR / "test_may2016_clean" / "*.parquet"
+WRITE_TEST_TARGETS_PARQUET = PROCESSED_DATA_DIR / "test_targets"
 TEST_TARGETS_PARQUET = PROCESSED_DATA_DIR / "test_targets" / "*.parquet"
+WRITE_FEATURES_PARQUET = PROCESSED_DATA_DIR / "features"
 FEATURES_PARQUET = PROCESSED_DATA_DIR / "features" / "*.parquet"
 NORMALIZED_DATASET_PARQUET = PROCESSED_DATA_DIR / "normalized_dataset.parquet"
 
