@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+*.log
 
 # Virtual Environment
 .venv/
@@ -11,12 +12,14 @@ venv/
 ENV/
 
 # Santander Raw Datasets & Archives (>100MB)
+data/raw/
 santander-product-recommendation/
 data/santander-product-recommendation/
 *.zip
 *.csv
 
-# Spark / Parquet outputs
+# Processed Spark / Parquet outputs
+data/processed/
 output/
 data/output/
 data/data_pull/
@@ -24,7 +27,7 @@ data/data_pull/
 *.crc
 _SUCCESS
 
-# IDEs & Notebooks
+# IDEs & OS Files
 .ipynb_checkpoints/
 .vscode/
 .idea/

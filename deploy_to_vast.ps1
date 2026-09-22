@@ -6,16 +6,16 @@ param(
 )
 
 Write-Host "==> [1/5] Cloning GitHub repo on remote instance (${HostIP}:${Port})..." -ForegroundColor Cyan
-ssh -n -p $Port root@$HostIP "git clone https://github.com/Ty-Tshiam/TabDPT-reco.git /workspace/TabDPT-reco && ln -s /workspace/TabDPT-reco /root/TabDPT-reco && mkdir -p /workspace/TabDPT-reco/data/output && ln -s /workspace/TabDPT-reco/data/output /workspace/TabDPT-reco/output"
+ssh -n -p $Port root@$HostIP "git clone https://github.com/Ty-Tshiam/TabDPT-reco.git /workspace/TabDPT-reco && ln -s /workspace/TabDPT-reco /root/TabDPT-reco && mkdir -p /workspace/TabDPT-reco/data/raw /workspace/TabDPT-reco/data/processed /workspace/TabDPT-reco/data/metadata /workspace/TabDPT-reco/data/tensors && ln -s /workspace/TabDPT-reco/data/processed /workspace/TabDPT-reco/data/output 2>/dev/null || true"
 
 Write-Host "==> [2/5] Uploading compressed dataset (226 MB via SCP)..." -ForegroundColor Cyan
-scp -P $Port data/santander-product-recommendation.zip "root@${HostIP}:/workspace/TabDPT-reco/data/"
+scp -P $Port data/raw/santander-product-recommendation.zip "root@${HostIP}:/workspace/TabDPT-reco/data/raw/"
 
 Write-Host "==> [3/5] Extracting dataset on remote NVMe drive..." -ForegroundColor Cyan
-ssh -n -p $Port root@$HostIP "cd /workspace/TabDPT-reco/data && unzip -q -o santander-product-recommendation.zip"
+ssh -n -p $Port root@$HostIP "cd /workspace/TabDPT-reco/data/raw && unzip -q -o santander-product-recommendation.zip"
 
 Write-Host "==> [4/5] Uploading pre-cleaned Parquet dataset (189 MB via SCP)..." -ForegroundColor Cyan
-scp -P $Port -r data/output "root@${HostIP}:/workspace/TabDPT-reco/data/output/"
+scp -P $Port -r data/processed/* "root@${HostIP}:/workspace/TabDPT-reco/data/processed/"
 
 Write-Host "==> [5/5] Installing Java 21 JRE and Python dependencies into /venv/main..." -ForegroundColor Cyan
 ssh -n -p $Port root@$HostIP "apt-get update && apt-get install -y default-jre-headless && /venv/main/bin/pip install -r /workspace/TabDPT-reco/requirements.txt"
