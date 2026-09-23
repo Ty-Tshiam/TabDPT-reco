@@ -3,8 +3,8 @@ import json
 import datetime
 import torch
 import polars as pl
-from tabdpt import TabDPTClassifier
-from sklearn.metrics import accuracy_score
+#from tabdpt import TabDPTClassifier
+#from sklearn.metrics import accuracy_score
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
@@ -284,16 +284,31 @@ def evaluate_customer_recommendations(
         "average_precision": round(ap, 4),
     }
 
-def prepare_pass_through_tensors(query):
+def prepare_pass_through_tensors(query, device, dtype):
+
     context = torch.load(CONTEXT_TENSOR_PATH)
-    y = torch.load(Y_TENSOR_PATH)
+    y_train = torch.load(Y_TENSOR_PATH)
 
     rows, cols = query.shape
     pads = 128 - cols
     padding = torch.zeros((rows, pads), dtype = torch.bfloat16)
     query = torch.hstack([query, padding])
 
-    return context.unsqueeze(0), query.unsqueeze(0), y.unsqueeze(0)
+    context = context.to(device, dtype = dtype)
+    query = query.to(device, dtype = dtype)
+    y_train = y_train.to(device, dtype = torch.long)
+
+    if device == "cpu":
+        context = context.numpy()
+        query = query.numpy()
+        y_train = y_train.numpy()
+        return y_train, context, query
+        
+    else:
+        x = torch.cat([context, query], dim = 0)
+        x = x.unsqueeze(0)
+        y_train = y_train.unsqueeze(0)
+        return y_train, x, 0
     
     
 
@@ -319,11 +334,14 @@ if __name__ == "__main__":
     processed_customer = encode_and_normalize(engineered_customer)
     query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.bfloat16)
 
-    context, query, y_train = prepare_pass_through_tensors(query)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat if device == "cuda" else torch.float32
+    y_train, x, x2 = prepare_pass_through_tensors(query, device, dtype)
 
-    context = context.to(dtype = torch.float32).squeeze(0).numpy()
-    query = query.to(dtype = torch.float32).squeeze(0).numpy()
-    y_train = y_train.to(dtype = torch.float32).squeeze(0).numpy()
+
+
+
+    '''
         
     model = TabDPTClassifier()
     model.fit(context, y_train)
@@ -339,7 +357,7 @@ if __name__ == "__main__":
     target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
     print(target_info)
 
-
+'''
 
 
 
