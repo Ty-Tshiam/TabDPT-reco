@@ -13,7 +13,7 @@ Key Responsibilities:
 6. Construct 16-class target (0 = do nothing, 1..15 = product additions).
 7. Save partitioned Parquet datasets to data/processed/.
 """
-
+# python src/run_pipeline.py --stage all >> output.log 2>&1
 import math
 import os
 from pathlib import Path

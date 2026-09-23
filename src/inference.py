@@ -3,8 +3,10 @@ import json
 import datetime
 import torch
 import polars as pl
-#from tabdpt import TabDPTClassifier
-#from sklearn.metrics import accuracy_score
+from safetensors.torch import load_file
+from tabdpt.model import TabDPTModel
+from huggingface_hub import hf_hub_download
+from sklearn.metrics import accuracy_score
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
@@ -42,11 +44,35 @@ except ImportError:
         Y_TENSOR_PATH
     )
 
+config = {
+    "num_features": 128,           # was 50  -> config.model.max_num_features
+    "enc_cell_dim": -1,            # was 128 -> disabled (config.model.enc_cell_dim)
+    "ninp": 512,                   # was 256 -> config.model.emsize
+    "nhid": 512,                   # unchanged, matches config.model.ff_dim
+                                    #   (SwiGLU internally does Linear(d, 2*ff_dim),
+                                    #    which is why ff.up.weight is [1024, 512])
+    "nhead": 8,                    # unchanged
+    "nlayers": 32,                 # was 6   -> config.model.nlayers
+    "dropout": 0.0,                # config.training.dropout
+    "n_out": 16,                   # was 1   -> config.model.max_num_classes
+    "regression_bin_count": 2048,  # was 64
+    "regression_bin_min": -10,     # was -3.0
+    "regression_bin_max": 10,      # was 3.0
+    "base_len": 64,                # was 128 -> config.model.min_eval_context
+    "max_len": 1048576,            # was 1024 -> config.model.max_eval_context
+    "y_encoder_dim": 128,          # was 64
+    "num_col_attn_layers": 2,      # new kwarg, matches default but be explicit
+    "n_thinking_rows": 64,         # new kwarg — this is what creates `thinking_embed`
+    "clip_sigma": 8.0,             # config.model.clip_n_sigma
+}
+
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))
 dummy_data = {"customer_id": "1166753"}
 date = datetime.date(2016, 5, 28)
+repo_id = "Layer6/TabDPT"
+model = TabDPTModel(**config)
 
 
 def get_customer(id: str, df: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
@@ -335,11 +361,34 @@ if __name__ == "__main__":
     query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.bfloat16)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.bfloat if device == "cuda" else torch.float32
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
     y_train, x, x2 = prepare_pass_through_tensors(query, device, dtype)
 
+    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
+    print(target_info)
 
+    try:
+        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_3.safetensors")
+    except Exception as e:
+        print("NONE")
+        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_2.safetensors")
 
+    state_dict = load_file(weights_path)
+    model.load_state_dict(state_dict)
+    model.to(device, dtype = dtype).eval()
+
+    with torch.no_grad():
+        logits = model(x, y_train, is_cls=True)
+
+    print(logits)
+
+    cls_logits = logits[..., : 16]
+    print(cls_logits)
+
+    probs = torch.softmax(cls_logits.float(), dim=-1)
+    print(probs)
+    pred_class = probs.argmax(dim=-1)
+    print(pred_class)
 
     '''
         
