@@ -12,66 +12,35 @@ from sklearn.metrics import accuracy_score
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 
-try:
-    from src.config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        OTHER_9_PRODUCTS,
-        ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
-        CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
-        CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
-        MODEL_CONFIG
-    )
-except ImportError:
-    from config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        OTHER_9_PRODUCTS,
-        ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
-        CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
-        CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
-        MODEL_CONFIG
-    )
+from config import (
+    CLEAN_TRAIN_PARQUET,
+    CLEAN_TEST_PARQUET,
+    TEST_TARGETS_PARQUET,
+    SELECTED_15_TARGETS,
+    TARGET_TO_INDEX,
+    OTHER_9_PRODUCTS,
+    ALL_24_PRODUCTS,
+    CORE_10_PRODUCTS,
+    CORE_7_PRODUCTS,
+    CATEGORICAL_MAPPINGS_JSON,
+    NORMALIZATION_STATS_JSON,
+    CONTEXT_TENSOR_PATH,
+    Y_TENSOR_PATH,
+    MODEL_CONFIG,
+    KV_CACHE,
+    MODEL_ARTIFACT
+)
 
-config = {
-    "num_features": 128,           
-    "enc_cell_dim": -1,            
-    "ninp": 512,                  
-    "nhid": 512,                   
-    "nhead": 8,                    
-    "nlayers": 32,                 
-    "dropout": 0.0,                
-    "n_out": 16,                   
-    "regression_bin_count": 2048,  
-    "regression_bin_min": -10,     
-    "regression_bin_max": 10,      
-    "base_len": 64,                
-    "max_len": 1048576,            
-    "y_encoder_dim": 128,          
-    "num_col_attn_layers": 2,      
-    "n_thinking_rows": 64,         
-    "clip_sigma": 8.0,             
-}
+config = MODEL_CONFIG["settings"]
 
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))
 dummy_data = {"customer_id": "1166753"}
 date = datetime.date(2016, 5, 28)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.bfloat16 if device == "cuda" else torch.float32
+classes = TARGET_TO_INDEX
 
 repo_id = "Layer6/TabDPT"
 model = TabDPTModel(**config)
@@ -249,11 +218,13 @@ def encode_and_normalize (customer):
     ]
     customer = customer.with_columns(normalize)
 
-    
     return customer.with_columns(
         pl.all().exclude("snapshot_date", "customer_id")
         .clip(-10,10)
     )
+
+    
+
 
 def get_already_held_mask(customer):
     held = []
@@ -312,7 +283,7 @@ def evaluate_customer_recommendations(
         "average_precision": round(ap, 4),
     }
 
-def prepare_pass_through_tensors(query, device, dtype):
+def prepare_pass_through_tensors(query):
 
     context = torch.load(CONTEXT_TENSOR_PATH)
     y_train = torch.load(Y_TENSOR_PATH)
@@ -338,14 +309,48 @@ def prepare_pass_through_tensors(query, device, dtype):
         y_train = y_train.unsqueeze(0)
         return y_train, x, 0
     
+
+def prepare_query(query):
+
+    rows, cols = query.shape
+    pads = 128 - cols
+    padding = torch.zeros((rows, pads), dtype = torch.bfloat16)
+    query = torch.hstack([query, padding])
+
+    query = query.to(device, dtype = dtype)
+
+    if device == "cpu":
+        query = query.numpy()
+        return  query
+        
+    return query.unsqueeze(0)
+    
+def format_predictions(logits, held):
+    print(f'[Inference] Logits calculated')
+
+    cls_logits = logits[..., : 16]
+    print(f'[Inference] Class logits')
+
+    probs = torch.softmax(cls_logits.float(), dim=-1)
+    print(f'[Inference] Softmaxxing {probs}')
+
+    pred_class = probs.argmax(dim=-1)
+    print(f'[Inference] Predicted Class {pred_class}')
+
+    vals, ind = torch.sort(probs[0][0], descending = True)
+    print(f'[Inference] Sorted indices : {ind}')
+    sorted_probs = [classes[i] for i in ind.tolist()]
+    recos = filter_valid_recommendations(sorted_probs, held, 7)
+    print(f'[Inference] Filtered recommendations : {recos}')
+    print(f'[Inference] The customer should buy this product : {recos[0]}')
+
     
 
 # ==============================================================================
 # Pipeline Execution & Demonstration for Customer 1166753
 # ==============================================================================
 if __name__ == "__main__":
-    start_time = time.time()
-    classes = TARGET_TO_INDEX 
+    start_time = time.time() 
     print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
     customer_info = get_customer(dummy_data["customer_id"], df)
 
@@ -366,98 +371,40 @@ if __name__ == "__main__":
     query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.bfloat16)
     print(f'[Inference] Processed customer info')
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    y_train, x, x2 = prepare_pass_through_tensors(query, device, dtype)
-    print(f'[Inference] Prepared tensor on {device} with {dtype}')
+    x_qry = prepare_query(query)
+    print(f'[Inference] Prepared query on {device} with {dtype} and shape of {x_qry.shape}')
 
     target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
     print(f'[Inference] Got target info \n {target_info}')
 
-    try:
-        weights_path = hf_hub_download(
-            repo_id=repo_id, filename="tabdpt1_3.safetensors", local_files_only = True
-            )
-        weight_file = "tabdpt1_3.safetensors"
-    except Exception as e:
-        print("No 1.3 using 1.2")
-        weights_path = hf_hub_download(
-            repo_id=repo_id, filename="tabdpt1_2.safetensors", local_files_only = True
-            )
-        weight_file = "tabdpt1_2.safetensors"
-        
-    print(f'[Inference] Downloading HuggingFace weights {weight_file}')
-
     print(f'[Inference] Loading Model')
-    state_dict = load_file(weights_path)
+    state_dict = torch.load(str(MODEL_ARTIFACT))
     model.load_state_dict(state_dict)
     model.to(device, dtype = dtype).eval()
-    model = torch.compile(model, mode = "reduce-overhead")
 
+    kv_cache, n_ctx, stats = torch.load(str(KV_CACHE))
     with torch.no_grad():
-        logits = model(x, y_train, is_cls=True)
+        model.predict_with_cache = torch.compile(model.predict_with_cache)
+        logits = model.predict_with_cache(x_qry, kv_cache, n_ctx, stats)
     
-    print(f'[Inference] Logits calculated')
-
-    cls_logits = logits[..., : 16]
-    print(f'[Inference] Class logits')
-
-    probs = torch.softmax(cls_logits.float(), dim=-1)
-    print(f'[Inference] Softmaxxing {probs}')
-
-    pred_class = probs.argmax(dim=-1)
-    print(f'[Inference] Predicted Class {pred_class}')
-
-    vals, ind = torch.sort(probs[0][0], descending = True)
-    print(f'[Inference] Sorted indices : {ind}')
-    sorted_probs = [classes[i] for i in ind.tolist()]
-    recos = filter_valid_recommendations(sorted_probs, held, 7)
-    print(f'[Inference] Filtered recommendations : {recos}')
-    print(f'[Inference] The customer should buy this product : {recos[0]}')
+    format_predictions(logits, held)
 
     total_time = time.time() - start_time
     print(f'[Inference] Total time : {total_time}') 
 
-    evaluations = evaluate_customer_recommendation(recos, target_info)
-    print(f'[Inference] Eval: {evaluations}')
+    print("DO IT AGAIN")
 
+    y, x, _ = prepare_pass_through_tensors(query)
 
-    '''
-        
-    model = TabDPTClassifier()
-    model.fit(context, y_train)
-    y_pred = model.predict(
-        query,
-        n_ensembles = 8,
-        temperature = 1,
-        context_size = None,
-        permute_classes=True,
-        seed = 42
-    )
-    print(y_pred)
-    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(target_info)
+    with torch.no_grad():
+        model = torch.compile(model, mode = "reduce-overhead")
+        logits = model(x, y, is_cls=True)
 
-'''
+    format_predictions(logits, held)
 
+    total_time = time.time() - start_time
+    print(f'[Inference] Total time : {total_time}') 
 
+    #evaluations = evaluate_customer_recommendations(recos, target_info)
+    #print(f'[Inference] Eval: {evaluations}')
 
-
-'''
-
-    # 2. Precomputed Multi-Class Ground Truth
-    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(f"[Ground Truth] Added Products (Every Class): {target_info['added_products']}")
-    print(f"[Ground Truth] Added Target Classes: {target_info['target_classes']}")
-
-    # 3. Example Evaluation: Simulated Model Prediction
-    simulated_model_raw_rankings = ["payroll_account", "direct_debit", "pensions", "payroll", "credit_card", "e_account", "taxes"]
-    valid_recommendations = filter_valid_recommendations(simulated_model_raw_rankings, already_held, top_k=7)
-    print(f"\n[Model Output] Raw rankings: {simulated_model_raw_rankings}")
-    print(f"[Filtered Recommendations] Valid top-7: {valid_recommendations}")
-
-    eval_result = evaluate_customer_recommendations(valid_recommendations, target_info)
-    print(f"\n[Evaluation Metrics against All Classes]:")
-    for k, v in eval_result.items():
-        print(f"  {k}: {v}")
-'''

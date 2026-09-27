@@ -47,7 +47,8 @@ PROVINCE_MEDIANS_JSON = METADATA_DIR / "province_median_incomes.json"
 TENSORS_DIR = DATA_DIR / "tensors"
 CONTEXT_TENSOR_PATH = TENSORS_DIR / "context.pt"
 Y_TENSOR_PATH = TENSORS_DIR / "y.pt"
-
+KV_CACHE = TENSORS_DIR / "context_kv_cache.pt"
+MODEL_ARTIFACT = PROJECT_ROOT / "model_repo" / "tabdpt" / "3" / "model.pt"
 
 def ensure_directories_exist():
     """Ensure all standard data subdirectories exist."""
@@ -246,5 +247,24 @@ MODEL_CONFIG = {
       "reg-ctr-r2": "max"
     },
     "top_saved_count": 5
+  },
+  "settings": {
+    "num_features": 128,           
+    "enc_cell_dim": -1,            
+    "ninp": 512,                  
+    "nhid": 512,                   
+    "nhead": 8,                    
+    "nlayers": 32,                 
+    "dropout": 0.0,                
+    "n_out": 16,                   
+    "regression_bin_count": 2048,  
+    "regression_bin_min": -10,     
+    "regression_bin_max": 10,      
+    "base_len": 64,                
+    "max_len": 1048576,            
+    "y_encoder_dim": 128,          
+    "num_col_attn_layers": 2,      
+    "n_thinking_rows": 64,         
+    "clip_sigma": 8.0,             
   }
 }
