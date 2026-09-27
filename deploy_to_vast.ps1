@@ -1,8 +1,8 @@
 # deploy_to_vast.ps1
 # Automates cloning TabDPT-reco, uploading data, and setting up dependencies on any Vast.ai GPU instance.
 param(
-    [string]$HostIP = "64.90.9.69",
-    [string]$Port = "10196"
+    [string]$HostIP = "67.68.177.249",
+    [string]$Port = "22735"
 )
 
 Write-Host "==> [1/5] Cloning GitHub repo on remote instance (${HostIP}:${Port})..." -ForegroundColor Cyan

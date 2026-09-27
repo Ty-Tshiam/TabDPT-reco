@@ -168,3 +168,82 @@ EXPLICIT_CATEGORICAL_COLS = {"province_code", "customer_relation_primary"}
 
 # Non-predictive identification & label columns to exclude from feature matrices
 NON_FEATURE_COLS = ["customer_id", "snapshot_date", "target_class"]
+
+MODEL_CONFIG = {
+  "version": "0.0.2",
+  "description": "TabDPT",
+  "seed": 42,
+  "exp_name": "large-cont",
+  "folder": "large-cont",
+  "exp_path": "runs/large-cont/large-cont",
+  "env": {
+    "device": "cuda:0",
+    "gpus": [0, 1, 2, 3],
+    "num_workers": 32
+  },
+  "model": {
+    "emsize": 512,
+    "max_num_classes": 16,
+    "regression_bin_count": 2048,
+    "regression_bin_min": -10,
+    "regression_bin_max": 10,
+    "max_num_features": 128,
+    "max_eval_context": 1048576,
+    "min_eval_context": 64,
+    "nhead": 8,
+    "ff_dim": 512,
+    "nlayers": 32,
+    "y_encoder_dim": 128,
+    "enc_cell_dim": -1,
+    "num_col_attn_layers": 2,
+    "n_thinking_rows": 64,
+    "clip_n_sigma": 8
+  },
+  "training": {
+    "num_model_updates": 128,
+    "per_update_rows": 1048576,
+    "per_gpu_rows": 65536,
+    "weight_decay": 0.05,
+    "dropout": 0.0,
+    "min_context_samples": 128,
+    "min_queries": 128,
+    "seq_lens": [512, 1024, 2048, 4096, 8192, 16384, 32768],
+    "eval_seq_len": 262144,
+    "reset_policy": "cnt",
+    "resume_from": "runs/large/large/latest.ckpt",
+    "clip_grad_norm": 4.0,
+    "lawa_enabled": True,
+    "lawa_k": 5,
+    "lawa_freq": 1,
+    "warmup_steps": 0,
+    "num_epochs": 2304,
+    "peak_lr": 2e-05,
+    "final_lr": 2e-05,
+    "encoder_weight_decay": 0.01,
+    "equi_encoder_clip_grad_norm_multiplier": 3.0,
+    "equi_isotropy_weight": 0.05,
+    "z_loss_weight": 0.0001,
+    "context_pred_loss_weight": 0.01
+  },
+  "data": {
+    "y_reg_augment": True,
+    "cls_shuffle_label_prob": 1.0,
+    "discrete_class_merge_prob": 0.0,
+    "synthetic_cls_prob": 0.5,
+    "max_sample_attempts": 100,
+    "drift_prob": 0.0,
+    "datasets_file": "tabdpt_datasets/training/extended_openml_filtered_deduped.csv",
+    "mmap": False,
+    "kaggle_data_path": None
+  },
+  "logging": {
+    "eval_every": 1,
+    "eval_n_ensembles": 1,
+    "eval_ensemble_seed": None,
+    "save_metrics": {
+      "cls-cc18-ce": "min",
+      "reg-ctr-r2": "max"
+    },
+    "top_saved_count": 5
+  }
+}

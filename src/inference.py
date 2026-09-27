@@ -25,7 +25,8 @@ try:
         CATEGORICAL_MAPPINGS_JSON,
         NORMALIZATION_STATS_JSON,
         CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH
+        Y_TENSOR_PATH,
+        MODEL_CONFIG
     )
 except ImportError:
     from config import (
@@ -41,31 +42,32 @@ except ImportError:
         CATEGORICAL_MAPPINGS_JSON,
         NORMALIZATION_STATS_JSON,
         CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH
+        Y_TENSOR_PATH,
+        MODEL_CONFIG
     )
 
-config = {
-    "num_features": 128,           # was 50  -> config.model.max_num_features
-    "enc_cell_dim": -1,            # was 128 -> disabled (config.model.enc_cell_dim)
-    "ninp": 512,                   # was 256 -> config.model.emsize
-    "nhid": 512,                   # unchanged, matches config.model.ff_dim
-                                    #   (SwiGLU internally does Linear(d, 2*ff_dim),
-                                    #    which is why ff.up.weight is [1024, 512])
-    "nhead": 8,                    # unchanged
-    "nlayers": 32,                 # was 6   -> config.model.nlayers
-    "dropout": 0.0,                # config.training.dropout
-    "n_out": 16,                   # was 1   -> config.model.max_num_classes
-    "regression_bin_count": 2048,  # was 64
-    "regression_bin_min": -10,     # was -3.0
-    "regression_bin_max": 10,      # was 3.0
-    "base_len": 64,                # was 128 -> config.model.min_eval_context
-    "max_len": 1048576,            # was 1024 -> config.model.max_eval_context
-    "y_encoder_dim": 128,          # was 64
-    "num_col_attn_layers": 2,      # new kwarg, matches default but be explicit
-    "n_thinking_rows": 64,         # new kwarg — this is what creates `thinking_embed`
-    "clip_sigma": 8.0,             # config.model.clip_n_sigma
+config = MODEL_CONFIG["model"]
+'''
+{
+    "num_features": 128,           
+    "enc_cell_dim": -1,            
+    "ninp": 512,                  
+    "nhid": 512,                   
+    "nhead": 8,                    
+    "nlayers": 32,                 
+    "dropout": 0.0,                
+    "n_out": 16,                   
+    "regression_bin_count": 2048,  
+    "regression_bin_min": -10,     
+    "regression_bin_max": 10,      
+    "base_len": 64,                
+    "max_len": 1048576,            
+    "y_encoder_dim": 128,          
+    "num_col_attn_layers": 2,      
+    "n_thinking_rows": 64,         
+    "clip_sigma": 8.0,             
 }
-
+'''
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))
