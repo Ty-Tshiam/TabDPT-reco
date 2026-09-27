@@ -11,6 +11,12 @@ import polars as pl
 import tritonclient.grpc as grpcclient
 from sklearn.metrics import accuracy_score
 
+tabdpt_src = Path(__file__).resolve().parent / "TabDPT-inference" / "src"
+if tabdpt_src.exists() and str(tabdpt_src) not in sys.path:
+    sys.path.insert(0, str(tabdpt_src))
+
+from tabdpt.model import TabDPTModel
+
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 
@@ -21,6 +27,31 @@ try:
         TEST_TARGETS_PARQUET,
         SELECTED_15_TARGETS,
         TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
+        INDEX_TO_TARGET,
+        OTHER_9_PRODUCTS,
+        ALL_24_PRODUCTS,
+        CORE_10_PRODUCTS,
+        CORE_7_PRODUCTS,
+        CATEGORICAL_MAPPINGS_JSON,
+        NORMALIZATION_STATS_JSON,
+        CONTEXT_TENSOR_PATH,
+        Y_TENSOR_PATH,
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
+    )
+except ImportError:
+    from config import (
+        CLEAN_TRAIN_PARQUET,
+        CLEAN_TEST_PARQUET,
+        TEST_TARGETS_PARQUET,
+        SELECTED_15_TARGETS,
+        TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
         INDEX_TO_TARGET,
         OTHER_9_PRODUCTS,
         ALL_24_PRODUCTS,
@@ -34,22 +65,9 @@ try:
         KV_CACHE,
         MODEL_ARTIFACT
     )
-except ImportError:
-    from config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        INDEX_TO_TARGET,
-        OTHER_9_PRODUCTS,
-        ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
-        CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
-        CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
+
+config = MODEL_CONFIG["settings"]
+
         MODEL_CONFIG,
         KV_CACHE,
         MODEL_ARTIFACT
@@ -250,6 +268,9 @@ def encode_and_normalize (customer):
     
 
 
+    
+
+
 def get_already_held_mask(customer):
     held = []
     for c in SELECTED_15_TARGETS:
@@ -310,12 +331,19 @@ def evaluate_customer_recommendations(
 def prepare_pass_through_tensors(query):
     context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
     y_train = torch.load(Y_TENSOR_PATH, map_location=device)
+def prepare_pass_through_tensors(query):
+    context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
+    y_train = torch.load(Y_TENSOR_PATH, map_location=device)
 
     rows, cols = query.shape
     pads = 128 - cols
     padding = torch.zeros((rows, pads), dtype=dtype, device=device)
     query = torch.hstack([query.to(device, dtype=dtype), padding])
+    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
+    query = torch.hstack([query.to(device, dtype=dtype), padding])
 
+    context = context.to(device, dtype=dtype)
+    y_train = y_train.to(device, dtype=torch.long)
     context = context.to(device, dtype=dtype)
     y_train = y_train.to(device, dtype=torch.long)
 
@@ -356,6 +384,7 @@ def format_predictions(probs, held):
 # ==============================================================================
 if __name__ == "__main__":
     start_time = time.time() 
+    start_time = time.time() 
     print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
     customer_info = get_customer(dummy_data["customer_id"], df)
 
@@ -370,6 +399,7 @@ if __name__ == "__main__":
     print(f"[Inference] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})")
 
     held = get_already_held_mask(engineered_customer)
+    print(f"[Inference] Got mask {held}")
     print(f"[Inference] Got mask {held}")
     
     processed_customer = encode_and_normalize(engineered_customer)
