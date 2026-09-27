@@ -1,11 +1,14 @@
+import os
 import math
 import json
 import datetime
 import torch
+import time
+import sys
+import numpy as np
+from pathlib import Path
 import polars as pl
-from safetensors.torch import load_file
-from tabdpt.model import TabDPTModel
-from huggingface_hub import hf_hub_download
+import tritonclient.grpc as grpcclient
 from sklearn.metrics import accuracy_score
 
 pl.Config.set_tbl_cols(-1)
@@ -18,6 +21,7 @@ try:
         TEST_TARGETS_PARQUET,
         SELECTED_15_TARGETS,
         TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
         OTHER_9_PRODUCTS,
         ALL_24_PRODUCTS,
         CORE_10_PRODUCTS,
@@ -26,7 +30,9 @@ try:
         NORMALIZATION_STATS_JSON,
         CONTEXT_TENSOR_PATH,
         Y_TENSOR_PATH,
-        MODEL_CONFIG
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
     )
 except ImportError:
     from config import (
@@ -35,6 +41,7 @@ except ImportError:
         TEST_TARGETS_PARQUET,
         SELECTED_15_TARGETS,
         TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
         OTHER_9_PRODUCTS,
         ALL_24_PRODUCTS,
         CORE_10_PRODUCTS,
@@ -43,38 +50,24 @@ except ImportError:
         NORMALIZATION_STATS_JSON,
         CONTEXT_TENSOR_PATH,
         Y_TENSOR_PATH,
-        MODEL_CONFIG
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
     )
 
-config = MODEL_CONFIG["model"]
-'''
-{
-    "num_features": 128,           
-    "enc_cell_dim": -1,            
-    "ninp": 512,                  
-    "nhid": 512,                   
-    "nhead": 8,                    
-    "nlayers": 32,                 
-    "dropout": 0.0,                
-    "n_out": 16,                   
-    "regression_bin_count": 2048,  
-    "regression_bin_min": -10,     
-    "regression_bin_max": 10,      
-    "base_len": 64,                
-    "max_len": 1048576,            
-    "y_encoder_dim": 128,          
-    "num_col_attn_layers": 2,      
-    "n_thinking_rows": 64,         
-    "clip_sigma": 8.0,             
-}
-'''
+config = MODEL_CONFIG["settings"]
+
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))
 dummy_data = {"customer_id": "1166753"}
 date = datetime.date(2016, 5, 28)
-repo_id = "Layer6/TabDPT"
-model = TabDPTModel(**config)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.bfloat16 if device == "cuda" else torch.float32
+classes = INDEX_TO_TARGET
+
+TRITON_URL = os.environ.get("TRITON_GRPC_URL", "localhost:8001")
+client = grpcclient.InferenceServerClient(url=TRITON_URL)
 
 
 def get_customer(id: str, df: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
@@ -249,11 +242,13 @@ def encode_and_normalize (customer):
     ]
     customer = customer.with_columns(normalize)
 
-    
     return customer.with_columns(
         pl.all().exclude("snapshot_date", "customer_id")
         .clip(-10,10)
     )
+
+    
+
 
 def get_already_held_mask(customer):
     held = []
@@ -312,38 +307,55 @@ def evaluate_customer_recommendations(
         "average_precision": round(ap, 4),
     }
 
-def prepare_pass_through_tensors(query, device, dtype):
-
-    context = torch.load(CONTEXT_TENSOR_PATH)
-    y_train = torch.load(Y_TENSOR_PATH)
+def prepare_pass_through_tensors(query):
+    context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
+    y_train = torch.load(Y_TENSOR_PATH, map_location=device)
 
     rows, cols = query.shape
     pads = 128 - cols
-    padding = torch.zeros((rows, pads), dtype = torch.bfloat16)
-    query = torch.hstack([query, padding])
+    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
+    query = torch.hstack([query.to(device, dtype=dtype), padding])
 
-    context = context.to(device, dtype = dtype)
-    query = query.to(device, dtype = dtype)
-    y_train = y_train.to(device, dtype = torch.long)
+    context = context.to(device, dtype=dtype)
+    y_train = y_train.to(device, dtype=torch.long)
 
-    if device == "cpu":
-        context = context.numpy()
-        query = query.numpy()
-        y_train = y_train.numpy()
-        return y_train, context, query
-        
-    else:
-        x = torch.cat([context, query], dim = 0)
-        x = x.unsqueeze(0)
-        y_train = y_train.unsqueeze(0)
-        return y_train, x, 0
+    x = torch.cat([context, query], dim=0)
+    x = x.unsqueeze(0)
+    y_train = y_train.unsqueeze(0)
+    return y_train, x, 0
+
+
+def prepare_query(query):
+    rows, cols = query.shape
+    pads = 128 - cols
+    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
+    query = torch.hstack([query.to(device, dtype=dtype), padding])
+    return query.unsqueeze(0)
     
+def format_predictions(probs, held):
+    if isinstance(probs, np.ndarray):
+        probs = torch.from_numpy(probs)
+    probs = probs.squeeze()  # ensure shape is (16,)
     
+    print(f'[Inference] Softmaxxed {probs}')
+
+    pred_class = probs.argmax().item()
+    print(f'[Inference] Predicted Class: {pred_class} ({classes[pred_class]})')
+
+    vals, ind = torch.sort(probs, descending=True)
+    print(f'[Inference] Sorted indices : {ind.tolist()}')
+    sorted_probs = [classes[i] for i in ind.tolist()]
+    recos = filter_valid_recommendations(sorted_probs, held, 7)
+    print(f'[Inference] Filtered recommendations : {recos}')
+    print(f'[Inference] The customer should buy this product : {recos[0]}')
+    return recos
+
 
 # ==============================================================================
 # Pipeline Execution & Demonstration for Customer 1166753
 # ==============================================================================
 if __name__ == "__main__":
+    start_time = time.time() 
     print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
     customer_info = get_customer(dummy_data["customer_id"], df)
 
@@ -358,76 +370,58 @@ if __name__ == "__main__":
     print(f"[Inference] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})")
 
     held = get_already_held_mask(engineered_customer)
+    print(f"[Inference] Got mask {held}")
     
     processed_customer = encode_and_normalize(engineered_customer)
-    query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.bfloat16)
+    query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.float32)
+    print(f'[Inference] Processed customer info')
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    y_train, x, x2 = prepare_pass_through_tensors(query, device, dtype)
+    x_qry = prepare_query(query.to(device, dtype=dtype)).to(torch.float32).cpu().numpy()
+    print(f'[Inference] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}')
 
     target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(target_info)
+    print(f'[Inference] Got target info \n {target_info}')
 
-    try:
-        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_3.safetensors")
-    except Exception as e:
-        print("NONE")
-        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_2.safetensors")
+    inputs = [grpcclient.InferInput("QUERY_FEATURES", [1, 1, 128], "FP32")]
+    inputs[0].set_data_from_numpy(x_qry)
 
-    state_dict = load_file(weights_path)
-    model.load_state_dict(state_dict)
-    model.to(device, dtype = dtype).eval()
+    outputs = [grpcclient.InferRequestedOutput("PROBABILITIES")]
+    response = client.infer(model_name="tabdpt", inputs=inputs, outputs=outputs)
+    probs = response.as_numpy("PROBABILITIES")
+    
+    recos = format_predictions(probs, held)
+    print(f'[Inference] Total pipeline: {time.time() - start_time:.4f}s)') 
+
+
+'''
+
+
+    print("\n--- Benchmark comparison with full forward pass (without KV cache) ---")
+    pass_start = time.time()
+    y, x, _ = prepare_pass_through_tensors(query)
 
     with torch.no_grad():
-        logits = model(x, y_train, is_cls=True)
+        try:
+            if torch.cuda.is_available() and hasattr(torch, "compile"):
+                compiled_model = torch.compile(model, mode="reduce-overhead")
+            else:
+                compiled_model = model
+        except Exception:
+            compiled_model = model
+        full_logits = compiled_model(x, y, is_cls=True)
 
-    print(logits)
+    format_predictions(full_logits, held)
+    full_time = time.time() - pass_start
+    print(f'[Inference] Full forward pass time : {full_time:.4f}s')
 
-    cls_logits = logits[..., : 16]
-    print(cls_logits)
+    evaluations = evaluate_customer_recommendations(recos, target_info)
+    print(f'[Inference] Recommendations evaluation: {evaluations}')
 
-    probs = torch.softmax(cls_logits.float(), dim=-1)
-    print(probs)
-    pred_class = probs.argmax(dim=-1)
-    print(pred_class)
+docker run --gpus all --rm -it \
+  --shm-size=2g \
+  -p 8001:8001 \
+  -v $(pwd)/model_repository:/models \
+  nvcr.io/nvidia/tritonserver:24.08-py3 \
+  tritonserver --model-repository=/models
 
-    '''
-        
-    model = TabDPTClassifier()
-    model.fit(context, y_train)
-    y_pred = model.predict(
-        query,
-        n_ensembles = 8,
-        temperature = 1,
-        context_size = None,
-        permute_classes=True,
-        seed = 42
-    )
-    print(y_pred)
-    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(target_info)
-
-'''
-
-
-
-
-'''
-
-    # 2. Precomputed Multi-Class Ground Truth
-    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(f"[Ground Truth] Added Products (Every Class): {target_info['added_products']}")
-    print(f"[Ground Truth] Added Target Classes: {target_info['target_classes']}")
-
-    # 3. Example Evaluation: Simulated Model Prediction
-    simulated_model_raw_rankings = ["payroll_account", "direct_debit", "pensions", "payroll", "credit_card", "e_account", "taxes"]
-    valid_recommendations = filter_valid_recommendations(simulated_model_raw_rankings, already_held, top_k=7)
-    print(f"\n[Model Output] Raw rankings: {simulated_model_raw_rankings}")
-    print(f"[Filtered Recommendations] Valid top-7: {valid_recommendations}")
-
-    eval_result = evaluate_customer_recommendations(valid_recommendations, target_info)
-    print(f"\n[Evaluation Metrics against All Classes]:")
-    for k, v in eval_result.items():
-        print(f"  {k}: {v}")
 '''

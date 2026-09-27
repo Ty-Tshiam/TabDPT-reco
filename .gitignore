@@ -35,3 +35,7 @@ _SUCCESS
 
 .pytest_cache
 .ruff_cache
+
+data/tensors/context_kv_cache.pt
+
+model_repo/tabdpt/3/model.pt
