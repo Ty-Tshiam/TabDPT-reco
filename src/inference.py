@@ -40,9 +40,6 @@ try:
         MODEL_CONFIG,
         KV_CACHE,
         MODEL_ARTIFACT
-        MODEL_CONFIG,
-        KV_CACHE,
-        MODEL_ARTIFACT
     )
 except ImportError:
     from config import (
@@ -68,12 +65,6 @@ except ImportError:
 
 config = MODEL_CONFIG["settings"]
 
-        MODEL_CONFIG,
-        KV_CACHE,
-        MODEL_ARTIFACT
-    )
-
-config = MODEL_CONFIG["settings"]
 
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
@@ -331,19 +322,12 @@ def evaluate_customer_recommendations(
 def prepare_pass_through_tensors(query):
     context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
     y_train = torch.load(Y_TENSOR_PATH, map_location=device)
-def prepare_pass_through_tensors(query):
-    context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
-    y_train = torch.load(Y_TENSOR_PATH, map_location=device)
 
     rows, cols = query.shape
     pads = 128 - cols
     padding = torch.zeros((rows, pads), dtype=dtype, device=device)
     query = torch.hstack([query.to(device, dtype=dtype), padding])
-    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
-    query = torch.hstack([query.to(device, dtype=dtype), padding])
 
-    context = context.to(device, dtype=dtype)
-    y_train = y_train.to(device, dtype=torch.long)
     context = context.to(device, dtype=dtype)
     y_train = y_train.to(device, dtype=torch.long)
 
@@ -384,7 +368,6 @@ def format_predictions(probs, held):
 # ==============================================================================
 if __name__ == "__main__":
     start_time = time.time() 
-    start_time = time.time() 
     print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
     customer_info = get_customer(dummy_data["customer_id"], df)
 
@@ -399,7 +382,6 @@ if __name__ == "__main__":
     print(f"[Inference] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})")
 
     held = get_already_held_mask(engineered_customer)
-    print(f"[Inference] Got mask {held}")
     print(f"[Inference] Got mask {held}")
     
     processed_customer = encode_and_normalize(engineered_customer)
