@@ -2,6 +2,7 @@ import math
 import json
 import datetime
 import torch
+import time
 import polars as pl
 from safetensors.torch import load_file
 from tabdpt.model import TabDPTModel
@@ -46,9 +47,7 @@ except ImportError:
         MODEL_CONFIG
     )
 
-config = MODEL_CONFIG["model"]
-'''
-{
+config = {
     "num_features": 128,           
     "enc_cell_dim": -1,            
     "ninp": 512,                  
@@ -67,12 +66,13 @@ config = MODEL_CONFIG["model"]
     "n_thinking_rows": 64,         
     "clip_sigma": 8.0,             
 }
-'''
+
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))
 dummy_data = {"customer_id": "1166753"}
 date = datetime.date(2016, 5, 28)
+
 repo_id = "Layer6/TabDPT"
 model = TabDPTModel(**config)
 
@@ -344,6 +344,8 @@ def prepare_pass_through_tensors(query, device, dtype):
 # Pipeline Execution & Demonstration for Customer 1166753
 # ==============================================================================
 if __name__ == "__main__":
+    start_time = time.time()
+    classes = TARGET_TO_INDEX 
     print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
     customer_info = get_customer(dummy_data["customer_id"], df)
 
@@ -358,39 +360,67 @@ if __name__ == "__main__":
     print(f"[Inference] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})")
 
     held = get_already_held_mask(engineered_customer)
+    print(f"[Inference] Got mask {held}")
     
     processed_customer = encode_and_normalize(engineered_customer)
     query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.bfloat16)
+    print(f'[Inference] Processed customer info')
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     y_train, x, x2 = prepare_pass_through_tensors(query, device, dtype)
+    print(f'[Inference] Prepared tensor on {device} with {dtype}')
 
     target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
-    print(target_info)
+    print(f'[Inference] Got target info \n {target_info}')
 
     try:
-        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_3.safetensors")
+        weights_path = hf_hub_download(
+            repo_id=repo_id, filename="tabdpt1_3.safetensors", local_files_only = True
+            )
+        weight_file = "tabdpt1_3.safetensors"
     except Exception as e:
-        print("NONE")
-        weights_path = hf_hub_download(repo_id=repo_id, filename="tabdpt1_2.safetensors")
+        print("No 1.3 using 1.2")
+        weights_path = hf_hub_download(
+            repo_id=repo_id, filename="tabdpt1_2.safetensors", local_files_only = True
+            )
+        weight_file = "tabdpt1_2.safetensors"
+        
+    print(f'[Inference] Downloading HuggingFace weights {weight_file}')
 
+    print(f'[Inference] Loading Model')
     state_dict = load_file(weights_path)
     model.load_state_dict(state_dict)
     model.to(device, dtype = dtype).eval()
+    model = torch.compile(model, mode = "reduce-overhead")
 
     with torch.no_grad():
         logits = model(x, y_train, is_cls=True)
-
-    print(logits)
+    
+    print(f'[Inference] Logits calculated')
 
     cls_logits = logits[..., : 16]
-    print(cls_logits)
+    print(f'[Inference] Class logits')
 
     probs = torch.softmax(cls_logits.float(), dim=-1)
-    print(probs)
+    print(f'[Inference] Softmaxxing {probs}')
+
     pred_class = probs.argmax(dim=-1)
-    print(pred_class)
+    print(f'[Inference] Predicted Class {pred_class}')
+
+    vals, ind = torch.sort(probs[0][0], descending = True)
+    print(f'[Inference] Sorted indices : {ind}')
+    sorted_probs = [classes[i] for i in ind.tolist()]
+    recos = filter_valid_recommendations(sorted_probs, held, 7)
+    print(f'[Inference] Filtered recommendations : {recos}')
+    print(f'[Inference] The customer should buy this product : {recos[0]}')
+
+    total_time = time.time() - start_time
+    print(f'[Inference] Total time : {total_time}') 
+
+    evaluations = evaluate_customer_recommendation(recos, target_info)
+    print(f'[Inference] Eval: {evaluations}')
+
 
     '''
         

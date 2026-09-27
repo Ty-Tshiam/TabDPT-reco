@@ -133,7 +133,8 @@ SELECTED_15_TARGETS = [
 ]
 
 # Mapping from product name to target integer class (1..15)
-TARGET_TO_INDEX = {col_name: idx + 1 for idx, col_name in enumerate(SELECTED_15_TARGETS)}
+TARGET_TO_INDEX = {idx + 1 : col_name for idx, col_name in enumerate(SELECTED_15_TARGETS)}
+TARGET_TO_INDEX [0] = "do_nothing"
 
 # The other 9 products in Santander ecosystem (tracked for lag1 ecosystem holdings)
 OTHER_9_PRODUCTS = [
