@@ -3,33 +3,62 @@ import json
 import datetime
 import torch
 import time
+import sys
+from pathlib import Path
 import polars as pl
 from safetensors.torch import load_file
-from tabdpt.model import TabDPTModel
 from huggingface_hub import hf_hub_download
 from sklearn.metrics import accuracy_score
+
+tabdpt_src = Path(__file__).resolve().parent / "TabDPT-inference" / "src"
+if tabdpt_src.exists() and str(tabdpt_src) not in sys.path:
+    sys.path.insert(0, str(tabdpt_src))
+
+from tabdpt.model import TabDPTModel
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 
-from config import (
-    CLEAN_TRAIN_PARQUET,
-    CLEAN_TEST_PARQUET,
-    TEST_TARGETS_PARQUET,
-    SELECTED_15_TARGETS,
-    TARGET_TO_INDEX,
-    OTHER_9_PRODUCTS,
-    ALL_24_PRODUCTS,
-    CORE_10_PRODUCTS,
-    CORE_7_PRODUCTS,
-    CATEGORICAL_MAPPINGS_JSON,
-    NORMALIZATION_STATS_JSON,
-    CONTEXT_TENSOR_PATH,
-    Y_TENSOR_PATH,
-    MODEL_CONFIG,
-    KV_CACHE,
-    MODEL_ARTIFACT
-)
+try:
+    from src.config import (
+        CLEAN_TRAIN_PARQUET,
+        CLEAN_TEST_PARQUET,
+        TEST_TARGETS_PARQUET,
+        SELECTED_15_TARGETS,
+        TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
+        OTHER_9_PRODUCTS,
+        ALL_24_PRODUCTS,
+        CORE_10_PRODUCTS,
+        CORE_7_PRODUCTS,
+        CATEGORICAL_MAPPINGS_JSON,
+        NORMALIZATION_STATS_JSON,
+        CONTEXT_TENSOR_PATH,
+        Y_TENSOR_PATH,
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
+    )
+except ImportError:
+    from config import (
+        CLEAN_TRAIN_PARQUET,
+        CLEAN_TEST_PARQUET,
+        TEST_TARGETS_PARQUET,
+        SELECTED_15_TARGETS,
+        TARGET_TO_INDEX,
+        INDEX_TO_TARGET,
+        OTHER_9_PRODUCTS,
+        ALL_24_PRODUCTS,
+        CORE_10_PRODUCTS,
+        CORE_7_PRODUCTS,
+        CATEGORICAL_MAPPINGS_JSON,
+        NORMALIZATION_STATS_JSON,
+        CONTEXT_TENSOR_PATH,
+        Y_TENSOR_PATH,
+        MODEL_CONFIG,
+        KV_CACHE,
+        MODEL_ARTIFACT
+    )
 
 config = MODEL_CONFIG["settings"]
 
@@ -40,7 +69,7 @@ dummy_data = {"customer_id": "1166753"}
 date = datetime.date(2016, 5, 28)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 dtype = torch.bfloat16 if device == "cuda" else torch.float32
-classes = TARGET_TO_INDEX
+classes = INDEX_TO_TARGET
 
 repo_id = "Layer6/TabDPT"
 model = TabDPTModel(**config)
@@ -284,67 +313,45 @@ def evaluate_customer_recommendations(
     }
 
 def prepare_pass_through_tensors(query):
-
-    context = torch.load(CONTEXT_TENSOR_PATH)
-    y_train = torch.load(Y_TENSOR_PATH)
+    context = torch.load(CONTEXT_TENSOR_PATH, map_location=device)
+    y_train = torch.load(Y_TENSOR_PATH, map_location=device)
 
     rows, cols = query.shape
     pads = 128 - cols
-    padding = torch.zeros((rows, pads), dtype = torch.bfloat16)
-    query = torch.hstack([query, padding])
+    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
+    query = torch.hstack([query.to(device, dtype=dtype), padding])
 
-    context = context.to(device, dtype = dtype)
-    query = query.to(device, dtype = dtype)
-    y_train = y_train.to(device, dtype = torch.long)
+    context = context.to(device, dtype=dtype)
+    y_train = y_train.to(device, dtype=torch.long)
 
-    if device == "cpu":
-        context = context.numpy()
-        query = query.numpy()
-        y_train = y_train.numpy()
-        return y_train, context, query
-        
-    else:
-        x = torch.cat([context, query], dim = 0)
-        x = x.unsqueeze(0)
-        y_train = y_train.unsqueeze(0)
-        return y_train, x, 0
-    
+    x = torch.cat([context, query], dim=0)
+    x = x.unsqueeze(0)
+    y_train = y_train.unsqueeze(0)
+    return y_train, x, 0
+
 
 def prepare_query(query):
-
     rows, cols = query.shape
     pads = 128 - cols
-    padding = torch.zeros((rows, pads), dtype = torch.bfloat16)
-    query = torch.hstack([query, padding])
-
-    query = query.to(device, dtype = dtype)
-
-    if device == "cpu":
-        query = query.numpy()
-        return  query
-        
+    padding = torch.zeros((rows, pads), dtype=dtype, device=device)
+    query = torch.hstack([query.to(device, dtype=dtype), padding])
     return query.unsqueeze(0)
     
-def format_predictions(logits, held):
-    print(f'[Inference] Logits calculated')
-
-    cls_logits = logits[..., : 16]
-    print(f'[Inference] Class logits')
-
-    probs = torch.softmax(cls_logits.float(), dim=-1)
-    print(f'[Inference] Softmaxxing {probs}')
+def format_predictions(probs, held):
+    
+    print(f'[Inference] Softmaxxed {probs}')
 
     pred_class = probs.argmax(dim=-1)
     print(f'[Inference] Predicted Class {pred_class}')
 
-    vals, ind = torch.sort(probs[0][0], descending = True)
+    vals, ind = torch.sort(probs[0][0], descending=True)
     print(f'[Inference] Sorted indices : {ind}')
     sorted_probs = [classes[i] for i in ind.tolist()]
     recos = filter_valid_recommendations(sorted_probs, held, 7)
     print(f'[Inference] Filtered recommendations : {recos}')
     print(f'[Inference] The customer should buy this product : {recos[0]}')
+    return recos
 
-    
 
 # ==============================================================================
 # Pipeline Execution & Demonstration for Customer 1166753
@@ -377,34 +384,42 @@ if __name__ == "__main__":
     target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
     print(f'[Inference] Got target info \n {target_info}')
 
-    print(f'[Inference] Loading Model')
-    state_dict = torch.load(str(MODEL_ARTIFACT))
-    model.load_state_dict(state_dict)
-    model.to(device, dtype = dtype).eval()
 
-    kv_cache, n_ctx, stats = torch.load(str(KV_CACHE))
-    with torch.no_grad():
-        model.predict_with_cache = torch.compile(model.predict_with_cache)
-        logits = model.predict_with_cache(x_qry, kv_cache, n_ctx, stats)
     
-    format_predictions(logits, held)
+    recos = format_predictions(probs, held)
+    cache_time = time.time() - cache_start
+    print(f'[Inference] KV cache forward time : {cache_time:.4f}s (Total pipeline: {time.time() - start_time:.4f}s)') 
 
-    total_time = time.time() - start_time
-    print(f'[Inference] Total time : {total_time}') 
 
-    print("DO IT AGAIN")
+'''
 
+
+    print("\n--- Benchmark comparison with full forward pass (without KV cache) ---")
+    pass_start = time.time()
     y, x, _ = prepare_pass_through_tensors(query)
 
     with torch.no_grad():
-        model = torch.compile(model, mode = "reduce-overhead")
-        logits = model(x, y, is_cls=True)
+        try:
+            if torch.cuda.is_available() and hasattr(torch, "compile"):
+                compiled_model = torch.compile(model, mode="reduce-overhead")
+            else:
+                compiled_model = model
+        except Exception:
+            compiled_model = model
+        full_logits = compiled_model(x, y, is_cls=True)
 
-    format_predictions(logits, held)
+    format_predictions(full_logits, held)
+    full_time = time.time() - pass_start
+    print(f'[Inference] Full forward pass time : {full_time:.4f}s')
 
-    total_time = time.time() - start_time
-    print(f'[Inference] Total time : {total_time}') 
+    evaluations = evaluate_customer_recommendations(recos, target_info)
+    print(f'[Inference] Recommendations evaluation: {evaluations}')
 
-    #evaluations = evaluate_customer_recommendations(recos, target_info)
-    #print(f'[Inference] Eval: {evaluations}')
+docker run --gpus all --rm -it \
+  --shm-size=2g \
+  -p 8001:8001 \
+  -v $(pwd)/model_repository:/models \
+  nvcr.io/nvidia/tritonserver:24.08-py3 \
+  tritonserver --model-repository=/models
 
+'''

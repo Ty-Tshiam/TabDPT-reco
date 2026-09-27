@@ -1,18 +1,37 @@
-name: "tabdpt"
-backend: "tensorrt_plan"
+name: "tabdpt_reco"
+backend: "python"
+
+# Set max_batch_size > 0 to enable Triton's dynamic batcher.
+# When max_batch_size > 0, Triton implicitly prepends the batch dimension.
 max_batch_size: 64
+
+dynamic_batching {
+  max_queue_delay_microseconds: 2000  # Coalesce queries arriving within 2ms
+}
 
 input [
   {
-    name: "input_features"
+    name: "QUERY_FEATURES"
     data_type: TYPE_BF16
-    dims: [ 128 ]                # Trailing dimensions (batch dim is handled automatically)
+    # Batch dimension is implicit. This matches an incoming tensor of shape [Batch, 1, 128].
+    # For a single query arriving alone, shape seen by model is [1, 1, 128].
+    dims: [ 1, 128 ]
   }
 ]
+
 output [
   {
-    name: "probabilities"
-    data_type: TYPE_BF16
-    dims: [ 10 ]
+    name: "PROBABILITIES"
+    data_type: TYPE_FP32
+    # Shape returned is [Batch, 16]
+    dims: [ 16 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    gpus: [ 0 ]
   }
 ]
