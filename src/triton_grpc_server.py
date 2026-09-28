@@ -108,7 +108,7 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
             # 2. Extract raw bytes to NumPy array
             shape = list(input_meta.shape)
             raw_bytes = request.raw_input_contents[input_idx]
-            x_np = np.frombuffer(raw_bytes, dtype=np.float32).reshape(shape)
+            x_np = np.frombuffer(raw_bytes, dtype=np.float32).copy().reshape(shape)
 
             # 3. Convert to GPU tensor
             x_gpu = torch.as_tensor(x_np, device=self.device, dtype=self.dtype)

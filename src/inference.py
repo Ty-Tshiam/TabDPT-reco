@@ -402,7 +402,7 @@ if __name__ == "__main__":
     probs = response.as_numpy("PROBABILITIES")
     
     recos = format_predictions(probs, held)
-    print(f'[Inference] Total pipeline: {time.time() - start_time:.4f}s)') 
+    print(f'[Inference] Total pipeline: {time.time() - start_time:.4f}s') 
 
 
 '''

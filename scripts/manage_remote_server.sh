@@ -39,8 +39,20 @@ case "$ACTION" in
         sleep 2
         tmux new-session -d -s "$SESSION_NAME" \
             "cd $REPO_DIR && $PYTHON_BIN src/triton_grpc_server.py 2>&1 | tee $LOG_FILE"
-        sleep 4
-        echo "Server restarted. Current log:"
+        echo "Waiting for server to initialize and bind port 8001 (loading 5.6GB KV-cache)..."
+        READY=0
+        for i in $(seq 1 45); do
+            if grep -q "Triton gRPC Inference Server listening on port 8001" "$LOG_FILE" 2>/dev/null; then
+                READY=1
+                break
+            fi
+            sleep 1
+        done
+        if [ "$READY" -eq 1 ]; then
+            echo "[OK] Triton server is ready and listening on port 8001."
+        else
+            echo "[WARN] Server did not report ready within 45s. Current log:"
+        fi
         tail -n 12 "$LOG_FILE"
         ;;
 

@@ -17,15 +17,25 @@ _repo_root = Path(__file__).resolve().parent.parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+import time
 import tritonclient.grpc as grpcclient
 from src.config import SELECTED_15_TARGETS, OTHER_9_PRODUCTS, TARGET_TO_INDEX, INDEX_TO_TARGET
 
 
-def test_triton_grpc_inference():
+def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):
     client = grpcclient.InferenceServerClient(url="localhost:8001")
 
-    # 1. Health checks
-    assert client.is_server_live(), "Triton Server is not live"
+    # 1. Health checks (with retry for tunnel / initialization latency)
+    server_live = False
+    for attempt in range(retries):
+        try:
+            if client.is_server_live():
+                server_live = True
+                break
+        except Exception:
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+    assert server_live, "Triton Server is not live"
     assert client.is_server_ready(), "Triton Server is not ready"
     assert client.is_model_ready("tabdpt"), "Model 'tabdpt' is not ready"
 

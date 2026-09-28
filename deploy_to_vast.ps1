@@ -17,8 +17,8 @@ param(
 # ------------------------------------------------------------------------------
 # 1. Resolve Connection Parameters (Interactive + Default Fallbacks)
 # ------------------------------------------------------------------------------
-$DEFAULT_IP = "65.108.94.15"
-$DEFAULT_PORT = "42749"
+$DEFAULT_IP = "75.129.99.99"
+$DEFAULT_PORT = "4227"
 
 if ([string]::IsNullOrWhiteSpace($HostIP)) {
     $promptIP = Read-Host "Enter Vast.ai Host IP [Default: $DEFAULT_IP]"
@@ -115,16 +115,27 @@ if (-not $SkipTunnel) {
     Write-Host "  Establishing Local SSH Tunnel & Running Verification" -ForegroundColor Cyan
     Write-Host "=======================================================" -ForegroundColor Cyan
 
-    # Terminate any existing background SSH tunnel on local port 8001
-    Get-Process -Name ssh -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "8001:localhost:8001" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Terminate any existing process/tunnel occupying local port 8001
+    $existingConns = Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue
+    if ($existingConns) {
+        $pids = $existingConns.OwningProcess | Select-Object -Unique
+        foreach ($procId in $pids) {
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 500
+    }
 
     Write-Host "[Tunnel] Forwarding local port 8001 -> root@${HostIP}:${Port}:8001..." -ForegroundColor Yellow
-    $tunnelJob = Start-Job -ScriptBlock {
-        param($p, $h)
-        ssh -N -L 8001:localhost:8001 -p $p "root@$h"
-    } -ArgumentList $Port, $HostIP
+    Start-Process -FilePath "ssh" -ArgumentList "-o", "StrictHostKeyChecking=no", "-N", "-L", "8001:localhost:8001", "-p", $Port, "root@$HostIP" -WindowStyle Hidden
 
-    Start-Sleep -Seconds 2
+    # Wait up to 10 seconds for local port 8001 to become responsive
+    for ($i = 0; $i -lt 10; $i++) {
+        $check = Test-NetConnection -ComputerName "127.0.0.1" -Port 8001 -WarningAction SilentlyContinue
+        if ($check.TcpTestSucceeded) {
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
 
     # Verify locally using test_triton_grpc.py
     Write-Host "[Verify] Executing local integration test against localhost:8001..." -ForegroundColor Yellow
