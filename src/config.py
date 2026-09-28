@@ -7,6 +7,7 @@ Centralizes:
 3. Santander column schema definitions and 16-class product targets.
 """
 
+import os
 from pathlib import Path
 
 # ==============================================================================
@@ -271,3 +272,93 @@ MODEL_CONFIG = {
     "clip_sigma": 8.0,             
   }
 }
+
+# ==============================================================================
+# Triton Serving Settings
+# ==============================================================================
+TRITON_GRPC_URL = os.getenv("TRITON_GRPC_URL", "localhost:8001")
+TRITON_MODEL_NAME = os.getenv("TRITON_MODEL_NAME", "tabdpt")
+TRITON_MODEL_VERSION = os.getenv("TRITON_MODEL_VERSION", "3")
+
+# ==============================================================================
+# Redis & Streaming Configuration
+# ==============================================================================
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+USE_FAKE_REDIS = os.getenv("USE_FAKE_REDIS", "true").lower() in ("true", "1", "yes")
+
+# Redis Streams & Consumer Group Names
+STREAM_CUSTOMER_EVENTS = "stream:customer_events"
+STREAM_RECOMMENDATIONS = "stream:recommendations"
+CONSUMER_GROUP = "reco_workers"
+
+# Key Prefixes & TTLs
+KEY_CUSTOMER_STATE = "customer:{customer_id}:state"
+KEY_CUSTOMER_RECS = "recs:{customer_id}"
+RECS_TTL_SECONDS = 3600  # 1 hour cache
+
+# ==============================================================================
+# Action-to-Product Relevance Mapping (Next Best Action Matrix)
+# ==============================================================================
+ACTION_RELEVANCE_MATRIX = {
+    "salary_deposit": [
+        "direct_debit",
+        "credit_card",
+        "pensions",
+        "payroll_account",
+        "payroll",
+    ],
+    "large_deposit": [
+        "long_term_deposits",
+        "funds",
+        "securities",
+        "mortgage",
+        "particular_plus_account",
+    ],
+    "branch_inquiry": [
+        "mortgage",
+        "loans",
+        "credit_card",
+        "particular_account",
+    ],
+    "tax_season_login": [
+        "taxes",
+        "pensions_plan",
+        "funds",
+    ],
+    "dormant_reactivation": [
+        "current_account",
+        "e_account",
+        "particular_account",
+    ],
+    "card_payment": [],  # Passive action: silently updates profile, suppresses active popup
+}
+
+# In-memory shared server singleton for fakeredis
+_fake_server = None
+
+
+def get_redis_client():
+    """
+    Returns a configured Redis client instance.
+    Uses in-memory fakeredis if USE_FAKE_REDIS is True, otherwise connects to real Redis.
+    """
+    global _fake_server
+    if USE_FAKE_REDIS:
+        import fakeredis
+
+        if _fake_server is None:
+            _fake_server = fakeredis.FakeServer()
+        return fakeredis.FakeRedis(server=_fake_server, decode_responses=True)
+    else:
+        import redis
+
+        return redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            password=REDIS_PASSWORD,
+            db=REDIS_DB,
+            decode_responses=True,
+        )
