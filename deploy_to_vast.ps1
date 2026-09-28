@@ -17,8 +17,8 @@ param(
 # ------------------------------------------------------------------------------
 # 1. Resolve Connection Parameters (Interactive + Default Fallbacks)
 # ------------------------------------------------------------------------------
-$DEFAULT_IP = "75.129.99.99"
-$DEFAULT_PORT = "4227"
+$DEFAULT_IP = ""
+$DEFAULT_PORT = ""
 
 if ([string]::IsNullOrWhiteSpace($HostIP)) {
     $promptIP = Read-Host "Enter Vast.ai Host IP [Default: $DEFAULT_IP]"

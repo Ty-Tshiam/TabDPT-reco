@@ -72,9 +72,6 @@ except ImportError:
         RECS_TTL_SECONDS
     )
 
-config = MODEL_CONFIG["settings"]
-
-
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
 history = pl.scan_parquet(str(CLEAN_TRAIN_PARQUET))
 test_targets = pl.scan_parquet(str(TEST_TARGETS_PARQUET.parent / "*.parquet"))

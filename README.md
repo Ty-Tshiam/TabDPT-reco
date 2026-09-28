@@ -1,146 +1,208 @@
-# TabDPT-reco: Santander Product Recommendation Pipeline
+# TabDPT-reco: Real-Time Tabular Foundation Model Recommendation System
 
-Data processing and feature engineering pipeline for tabular foundation models (specifically **TabDPT**) on the Santander Product Recommendation dataset.
+An end-to-end, event-driven banking recommendation platform powered by **TabDPT** (Tabular Deep Pretrained Transformer) on the Santander Product Recommendation ecosystem.
 
-The pipeline transforms raw multi-year transactional banking data into padded PyTorch tensors suitable for tabular deep learning transformers, constructing a **16-class product recommendation task** (Class 0 = do nothing, Classes 1..15 = specific product additions) with **80 high-signal predictive features**.
+The system scales from raw multi-year transactional banking data (~2.4 GB) to low-latency real-time inference (<25ms) via **Triton Inference Server (gRPC)**, **Redis Streams**, and an executive **Streamlit Next-Best-Action Dashboard**.
 
 ---
 
-## Architecture & Directory Structure
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Offline["Offline Data & Tensor Pipeline"]
+        direction TB
+        raw["data/raw/train_ver2.csv"] --> S1["Stage 1: PySpark Feature Engineering<br/>(80 lag1/lag2 holdings, deltas, bundles, seasonality)"]
+        S1 --> S2["Stage 2: Polars Categorical Encoding & Normalization"]
+        S2 --> S3["Stage 3: Stratified Subsampling & Padding to 128-dim"]
+        S3 --> Tensors["data/tensors/context.pt & KV-Cache"]
+    end
+
+    subgraph Serving["High-Throughput Model Serving"]
+        direction TB
+        Tensors --> Triton["Triton Inference Server / Standalone gRPC<br/>(Port 8001 | KServe v2 Protocol)"]
+        Triton --> KV["TabDPT Model (32 Layers) + Attention KV-Cache<br/>Latency: < 20ms"]
+    end
+
+    subgraph Streaming["Real-Time Event Hub (Redis)"]
+        direction TB
+        UI_Action["Customer Event Trigger<br/>(e.g. Salary Deposit, Large Wire, Branch Inquiry)"] -->|XADD| StreamIn[("stream:customer_events")]
+        StreamIn -->|XREADGROUP| Worker["Streaming Worker<br/>(src/streaming/event_processor.py)"]
+        Worker -->|QUERY_FEATURES: 1x1x128| Triton
+        Triton -->|PROBABILITIES: 1x16| Worker
+        Worker --> NBA{"Next-Best-Action Filter<br/>Match Trigger Intent?"}
+        NBA -->|Active Match| StreamOut[("stream:recommendations<br/>(Active Push Alert)")]
+        NBA -->|Passive Update| Cache[("recs:{customer_id}<br/>(Silent Recalibration)")]
+    end
+
+    subgraph Client["Presentation & Operations"]
+        direction TB
+        StreamOut --> UI["Interactive Demo Dashboard<br/>(Streamlit: Port 8501)"]
+        Cache --> UI
+    end
+```
+
+---
+
+## 📁 Repository Structure
 
 ```text
 TabDPT-reco/
-├── data/                               # All datasets & serialized metadata
+├── data/                               # Datasets, parquet partitions, & metadata
 │   ├── raw/                            # Original Santander CSVs & compressed archives
-│   │   ├── train_ver2.csv              # ~2.29 GB raw historical training records
-│   │   ├── test_ver2.csv               # ~110 MB raw test evaluation set
-│   │   └── santander-product-recommendation.zip
-│   ├── processed/                      # Parquet intermediate datasets across stages
+│   ├── processed/                      # Intermediate Parquet partitions across stages
 │   │   ├── train_clean/                # Cleaned training partition (< 2016-05-28)
 │   │   ├── test_may2016_clean/         # Cleaned evaluation test partition (2016-05-28)
 │   │   ├── features/                   # Engineered lag, delta, bundle & seasonal features
 │   │   └── normalized_dataset.parquet  # Fully encoded & globally standardized dataset
-│   ├── metadata/                       # Encoding dictionaries & feature scaling stats
-│   │   ├── categorical_mappings.json   # Frequency-ranked integer categorical mappings
-│   │   └── normalization_stats.json    # Global feature mean and standard deviation
-│   └── tensors/                        # Final exported PyTorch tensors for TabDPT
+│   ├── metadata/                       # Mappings & feature normalization stats
+│   └── tensors/                        # Padded tensors & precomputed KV-cache
 │       ├── context.pt                  # Padded feature matrix [N, 128], torch.bfloat16
-│       └── y.pt                        # Target class vector [N], torch.int64
-├── src/                                # Modular pipeline code
-│   ├── config.py                       # Central path definitions & schema constants
-│   ├── run_pipeline.py                 # Unified CLI runner for all stages
-│   └── stages/                         # Pipeline stage implementations
-│       ├── stage1_spark_features.py    # PySpark cleaning & feature engineering
-│       ├── stage2_encode_normalize.py  # Categorical encoding & global normalization
-│       └── stage3_tensor_builder.py    # Stratified subsampling & PyTorch tensor export
-├── deploy_to_vast.ps1                  # Remote deployment automation script for Vast.ai
-├── requirements.txt                    # Python dependencies
+│       ├── y.pt                        # Target class vector [N], torch.int64
+│       └── context_kv_cache.pt         # Precomputed attention KV-cache for <20ms inference
+├── model_repo/                         # Triton Inference Server Model Repository
+│   └── tabdpt/
+│       ├── config.pbtxt                # KServe v2 input/output schema [1, 1, 128] -> [1, 16]
+│       └── 3/                          # Model version directory
+├── src/                                # Core codebase
+│   ├── config.py                       # Central configurations, paths, Redis settings & schemas
+│   ├── run_pipeline.py                 # CLI runner for offline Stages 1, 2, and 3
+│   ├── triton_grpc_server.py           # KServe v2-compliant Triton gRPC serving daemon (Port 8001)
+│   ├── stages/                         # Offline pipeline stages
+│   │   ├── stage1_spark_features.py    # PySpark cleaning & feature engineering
+│   │   ├── stage2_encode_normalize.py  # Categorical encoding & global normalization
+│   │   └── stage3_tensor_builder.py    # Stratified subsampling & 128-dim tensor builder
+│   ├── streaming/                      # Real-time event streaming subsystem
+│   │   ├── __init__.py
+│   │   └── event_processor.py          # Redis Stream worker: consumes, predicts & publishes recos
+│   └── frontend/                       # Interactive demonstration UI
+│       ├── __init__.py
+│       └── app.py                      # Streamlit real-time dashboard & action simulator
+├── tests/                              # Unit & integration test suites
+│   ├── test_triton_grpc.py             # Triton gRPC liveness & inference contract verification
+│   └── test_kv_cache.py                # KV-cache consistency & speedup validation
+├── deploy_to_vast.ps1                  # Remote deployment automation for Vast.ai GPU instances
+├── requirements.txt                    # Project dependencies
 └── README.md
 ```
 
 ---
 
-## Pipeline Stages
+## ⚡ Core Components
 
-```mermaid
-flowchart TD
-    subgraph S1["Stage 1: PySpark Data Cleaning & Feature Engineering"]
-        direction TB
-        raw_csv["data/raw/train_ver2.csv"] --> clean["Demographic cleaning & median income imputation"]
-        clean --> split["Temporal split: train (< 2016-05-28) & test (2016-05-28)"]
-        split --> cap["Cap high-cardinality categoricals (<=100 categories)"]
-        cap --> feats["Engineer 80 lag1/lag2 holdings, deltas, bundles, seasonality"]
-        feats --> s1_out["data/processed/features"]
-    end
+### 1. Offline Data & Feature Engineering Pipeline
+- **Stage 1 (PySpark)**: Cleans demographics, imputes province median income, and engineers 80 predictive features including:
+  - 24 product lag-1 holdings & 10 core product lag-2 holdings.
+  - Acquisition/churn velocity deltas for core 7 products.
+  - Composite bundle scores (`payroll`, `investment`, `credit`, `savings`).
+  - Seasonality drivers (cyclical sine/cosine month encoders, tax, academic, summer, and pension windows).
+  - 16-class product recommendation target ($0$ = do nothing, $1..15$ = new product acquired).
+- **Stage 2 (Polars)**: Fast columnar categorical frequency encoding and global z-score normalization.
+- **Stage 3 (Polars + PyTorch)**: Temporal stratified sampling (~100k balanced rows) and zero-padding features from 80 to **128 dimensions** (native width expected by TabDPT transformer layers).
 
-    subgraph S2["Stage 2: Categorical Encoding & Normalization (Polars)"]
-        direction TB
-        s1_out --> cat_enc["Rank categoricals by frequency (most frequent = 0)"]
-        cat_enc --> norm["Compute global feature mean & std -> scale features"]
-        norm --> s2_meta["data/metadata/categorical_mappings.json<br/>data/metadata/normalization_stats.json"]
-        norm --> s2_out["data/processed/normalized_dataset.parquet"]
-    end
+### 2. Model Serving Layer (Triton gRPC)
+- Standalone KServe v2 / Triton-compatible gRPC server listening on port **8001**.
+- Model signature:
+  - Input: `QUERY_FEATURES` [Batch, 1, 128] (FP32).
+  - Output: `PROBABILITIES` [Batch, 16] (FP32).
+- **KV-Cache Acceleration**: Leverages precomputed context key-value pairs (`context_kv_cache.pt`) to bypass re-encoding historical evaluation contexts, dropping inference latency from ~500ms to **< 20ms**.
 
-    subgraph S3["Stage 3: Stratified Sampling & Tensor Export (Polars + PyTorch)"]
-        direction TB
-        s2_out --> strat["Temporal stratified sampling (100k target rows: 70% recent / 30% historical)"]
-        strat --> clip["Clip features to [-10, 10]"]
-        clip --> pad["Zero-pad feature width from 80 to 128 dimensions"]
-        pad --> s3_out["data/tensors/context.pt (bfloat16)<br/>data/tensors/y.pt (int64)"]
-    end
-```
+### 3. Real-Time Streaming Subsystem (Redis Streams)
+- **Ingestion (`stream:customer_events`)**: Durable event log capturing real-time user actions (`customer_id`, `action`, `timestamp`).
+- **Consumer Group (`reco_workers`)**: `src/streaming/event_processor.py` reads events via `XREADGROUP`, extracts customer history, assembles normalized 128-dim tensors, queries Triton, and filters already-held products.
+- **Next-Best-Action (NBA) Relevance Filter**:
+  - Distinguishes between **Active Triggers** (e.g. `salary_deposit` matching `direct_debit` or `pensions`) and **Passive Updates** (e.g. routine `card_payment`).
+  - Active matches fire push notifications to `stream:recommendations`.
+  - Passive actions silently recalibrate the customer's cached profile in `recs:{customer_id}` with TTL.
+- **Zero-Docker Rapid Dev Mode**: Includes built-in `fakeredis` support for instant in-memory development, with automatic toggle to real Redis/Docker (`USE_FAKE_REDIS=false`).
 
-### Stage 1: `src/stages/stage1_spark_features.py`
-- **Engine**: PySpark (local multi-threaded or cluster mode).
-- **Functionality**:
-  - Cleans raw demographic, account, and product columns.
-  - Imputes missing household income by province median (falling back to global median).
-  - Caps high-cardinality categoricals (`entry_channel` <= 80, `residence_country` <= 30) strictly on training data prior to May 2016 to prevent temporal leakage.
-  - Generates lag 1 holdings for all 24 Santander products, and lag 2 / velocity deltas for core products.
-  - Constructs 4 lifestyle bundles (`payroll`, `investment`, `credit`, `savings`).
-  - Encodes calendar dynamics (`sin_month`, `cos_month`, tax, academic, summer, and pension season flags).
-  - Builds the **16-class product recommendation target**:
-    - `0`: Do nothing (no new product acquired).
-    - `1..15`: Product added at time $t$ that was not held at time $t-1$.
-
-### Stage 2: `src/stages/stage2_encode_normalize.py`
-- **Engine**: Polars (high-performance columnar scanning).
-- **Functionality**:
-  - Scans `data/processed/features`.
-  - Encodes categorical string and code features into frequency-ranked integer indices (index `0` for most frequent category) with safe fallbacks for unseen values.
-  - Computes global dataset-level mean and standard deviation across all feature columns.
-  - Scales features via z-score scaling: `(x - global_mean) / global_std`.
-  - Saves metadata to `data/metadata/` and outputs `data/processed/normalized_dataset.parquet`.
-
-### Stage 3: `src/stages/stage3_tensor_builder.py`
-- **Engine**: Polars + PyTorch.
-- **Functionality**:
-  - Samples ~100,000 balanced rows with 70% recent (last 6 months) and 30% historical data across 6 strata:
-    - 45k recent product purchases (Classes 1..15, 3k/class).
-    - 15k historical product purchases (Classes 1..15, 1k/class).
-    - 21k recent active non-purchases (Class 0).
-    - 9k historical active non-purchases (Class 0).
-    - 7k recent dormant non-purchases (Class 0).
-    - 3k historical dormant non-purchases (Class 0).
-  - Stabilizes outliers by clipping numeric values to `[-10.0, 10.0]`.
-  - Zero-pads feature dimension from 80 features to **128 dimensions** (the native column width expected by TabDPT transformer layers).
-  - Converts matrix to `torch.bfloat16` and saves to `data/tensors/context.pt` and `data/tensors/y.pt`.
+### 4. Interactive Demo Dashboard (Streamlit)
+- **Live Archetype Dossiers**: Pre-loaded with diverse customer personas (e.g. Customer `1166753` — University Student, `658033` — Affluent Professional) displaying live held product badges and financial metadata.
+- **Interactive Action Simulator**: One-click simulation of banking triggers (Salary Deposit, Capital Inflow > €10k, Branch Loan Inquiry, Tax Login, Card Payment).
+- **Hero Recommendation Card**: Displays top recommended product with confidence score, category, and an **Active Trigger Match vs. Silent Profile Update** visual banner.
+- **Full Class Propensity Distribution**: Real-time bar chart over all 15 product probabilities.
+- **Redis Streams Audit Trail**: Real-time inspection of stream message IDs, payloads, and latency stats.
 
 ---
 
-## Setup & Running the Pipeline
+## 🚀 Quickstart Guide
 
-### Local Environment Setup
+### 1. Environment Setup
+
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# Clone repository
+git clone https://github.com/Ty-Tshiam/TabDPT-reco.git
+cd TabDPT-reco
 
-# 2. If using PySpark on Linux, install Java JRE
-apt-get update && apt-get install -y default-jre-headless
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Running the Pipeline via CLI
-Execute stages individually or end-to-end using `src/run_pipeline.py`:
+### 2. Running Offline Pipeline Stages (Optional)
+If regenerating parquet partitions and PyTorch tensors from raw data:
 
 ```bash
 # Run complete end-to-end pipeline (Stages 1 -> 2 -> 3)
 python src/run_pipeline.py --stage all
 
-# Run individual stages
-python src/run_pipeline.py --stage 1    # PySpark cleaning & feature engineering
-python src/run_pipeline.py --stage 2    # Categorical encoding & global normalization
-python src/run_pipeline.py --stage 3    # Stratified subsampling & PyTorch tensor generation
+# Or run individual stages:
+python src/run_pipeline.py --stage 1  # PySpark cleaning & feature engineering
+python src/run_pipeline.py --stage 2  # Categorical encoding & normalization
+python src/run_pipeline.py --stage 3  # Stratified subsampling & 128-dim tensor export
+```
+
+### 3. Launching the Real-Time Stack
+
+Run the following services in separate terminals:
+
+#### Terminal 1: Model Serving (Triton gRPC Server)
+```bash
+python src/triton_grpc_server.py
+```
+*Listens on `localhost:8001` and initializes the TabDPT 32-layer transformer with KV-cache.*
+
+#### Terminal 2: Streaming Consumer Worker
+```bash
+python src/streaming/event_processor.py
+```
+*Listens to `stream:customer_events`, runs Triton inference, applies Next-Best-Action filtering, and publishes recommendations.*
+
+#### Terminal 3: Interactive Demo Frontend
+```bash
+streamlit run src/frontend/app.py
+```
+*Opens the executive demo dashboard at `http://localhost:8501`.*
+
+---
+
+## 🧪 Verification & Testing
+
+Verify Triton gRPC server liveness, input/output tensors, and recommendation ranking:
+
+```bash
+# Test Triton gRPC connection & inference contract
+python tests/test_triton_grpc.py
+
+# Test KV-Cache consistency against full forward pass
+python tests/test_kv_cache.py
 ```
 
 ---
 
-## Remote Deployment (Vast.ai)
-To run heavy processing or model training on a remote GPU instance with Vast.ai:
+## 🌐 Remote Deployment (Vast.ai)
+
+To deploy heavy processing, Redis, or Triton serving on a remote GPU instance with Vast.ai:
+
 ```powershell
 ./deploy_to_vast.ps1 -HostIP "<instance-ip>" -Port "<ssh-port>"
 ```
-This script automatically:
+
+This automated deployment script:
 1. Clones the repository into `/workspace/TabDPT-reco`.
 2. Sets up directory structures (`data/raw/`, `data/processed/`, `data/metadata/`, `data/tensors/`).
-3. SCPs compressed raw datasets and pre-cleaned Parquet partitions.
+3. Securely copies compressed datasets and pre-cleaned partitions via SCP.
 4. Installs headless Java JRE and Python dependencies into the remote environment.
