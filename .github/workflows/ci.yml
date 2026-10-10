@@ -38,6 +38,12 @@ jobs:
             ruff check .
             ruff format --check .
         
+        - name: Debug tabdpt
+          run: |
+            ls src/TabDPT-inference/src || echo "submodule missing"
+            PYTHONPATH=src/TabDPT-inference/src python -c "import tabdpt; print(tabdpt.__file__)"
+            pip list | grep -i tabdpt
+                  
         - name: Test with pytest
           run: |
             pytest --cov=. --cov-report=xml --junitxml=junit/test-results-${{ matrix.python-version }}.xml
