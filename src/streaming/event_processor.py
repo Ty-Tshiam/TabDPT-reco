@@ -73,7 +73,7 @@ classes = INDEX_TO_TARGET
 r = get_redis_client()
 try:
     r.xgroup_create(STREAM_CUSTOMER_EVENTS, CONSUMER_GROUP, id="0", mkstream=True)
-except Exception as e:
+except Exception as e: # noqa: BLE001
     if "BUSYGROUP" not in str(e):
         raise
 
