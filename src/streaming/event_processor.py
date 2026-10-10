@@ -73,7 +73,7 @@ classes = INDEX_TO_TARGET
 r = get_redis_client()
 try:
     r.xgroup_create(STREAM_CUSTOMER_EVENTS, CONSUMER_GROUP, id="0", mkstream=True)
-except Exception as e: # noqa: BLE001
+except Exception as e: # noqa: RUF100
     if "BUSYGROUP" not in str(e):
         raise
 
@@ -457,6 +457,3 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("[Worker] Stopping worker gracefully...")
             break
-        except Exception as e:
-            print(f"[Worker] Error processing stream: {e}")
-            time.sleep(1)
