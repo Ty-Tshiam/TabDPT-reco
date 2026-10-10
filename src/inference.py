@@ -1,66 +1,59 @@
-import os
-import math
-import json
 import datetime
-import torch
-import time
+import json
+import math
+import os
 import sys
-import numpy as np
+import time
 from pathlib import Path
+
+import numpy as np
 import polars as pl
+import torch
 import tritonclient.grpc as grpcclient
-from sklearn.metrics import accuracy_score
 
 tabdpt_src = Path(__file__).resolve().parent / "TabDPT-inference" / "src"
 if tabdpt_src.exists() and str(tabdpt_src) not in sys.path:
     sys.path.insert(0, str(tabdpt_src))
 
-from tabdpt.model import TabDPTModel
 
 pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 
 try:
     from src.config import (
-        CLEAN_TRAIN_PARQUET,
+        ALL_24_PRODUCTS,
+        CATEGORICAL_MAPPINGS_JSON,
         CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
+        CLEAN_TRAIN_PARQUET,
+        CONTEXT_TENSOR_PATH,
+        CORE_7_PRODUCTS,
+        CORE_10_PRODUCTS,
+        INDEX_TO_TARGET,
+        KV_CACHE,
+        MODEL_ARTIFACT,
+        MODEL_CONFIG,
+        NORMALIZATION_STATS_JSON,
+        OTHER_9_PRODUCTS,
         SELECTED_15_TARGETS,
         TARGET_TO_INDEX,
-        INDEX_TO_TARGET,
-        INDEX_TO_TARGET,
-        OTHER_9_PRODUCTS,
-        ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
-        CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
-        CONTEXT_TENSOR_PATH,
+        TEST_TARGETS_PARQUET,
         Y_TENSOR_PATH,
-        MODEL_CONFIG,
-        KV_CACHE,
-        MODEL_ARTIFACT
     )
 except ImportError:
     from config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        INDEX_TO_TARGET,
-        INDEX_TO_TARGET,
-        OTHER_9_PRODUCTS,
         ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
         CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
+        CLEAN_TEST_PARQUET,
+        CLEAN_TRAIN_PARQUET,
         CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
+        CORE_7_PRODUCTS,
+        CORE_10_PRODUCTS,
+        INDEX_TO_TARGET,
         MODEL_CONFIG,
-        KV_CACHE,
-        MODEL_ARTIFACT
+        NORMALIZATION_STATS_JSON,
+        SELECTED_15_TARGETS,
+        TEST_TARGETS_PARQUET,
+        Y_TENSOR_PATH,
     )
 
 config = MODEL_CONFIG["settings"]
@@ -386,7 +379,7 @@ if __name__ == "__main__":
     
     processed_customer = encode_and_normalize(engineered_customer)
     query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.float32)
-    print(f'[Inference] Processed customer info')
+    print('[Inference] Processed customer info')
 
     x_qry = prepare_query(query.to(device, dtype=dtype)).to(torch.float32).cpu().numpy()
     print(f'[Inference] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}')

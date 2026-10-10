@@ -6,15 +6,15 @@ Implements the KServe v2 / Triton gRPC Inference Protocol specification
 protobuf descriptors and PyTorch on GPU.
 """
 
-import sys
-import time
 import os
-from pathlib import Path
+import sys
 from concurrent import futures
+from pathlib import Path
+
+import grpc
 import numpy as np
 import torch
 import torch.nn.functional as F
-import grpc
 
 # Add TabDPT submodule and project root to sys.path
 _repo_root = Path(__file__).resolve().parent.parent
@@ -26,7 +26,8 @@ for p in [_repo_root, _tabdpt_src]:
 import tritonclient.grpc.service_pb2 as pb2
 import tritonclient.grpc.service_pb2_grpc as pb2_grpc
 from tabdpt.model import TabDPTModel
-from src.config import MODEL_CONFIG, KV_CACHE, MODEL_ARTIFACT
+
+from src.config import KV_CACHE, MODEL_ARTIFACT, MODEL_CONFIG
 
 
 class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
@@ -155,10 +156,10 @@ def serve(port: int = 8001):
     pb2_grpc.add_GRPCInferenceServiceServicer_to_server(service, server)
     server.add_insecure_port(f"[::]:{port}")
     server.start()
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"  Triton gRPC Inference Server listening on port {port}")
-    print(f"  Ready to serve model 'tabdpt' (v3)")
-    print(f"=======================================================\n")
+    print("  Ready to serve model 'tabdpt' (v3)")
+    print("=======================================================\n")
     server.wait_for_termination()
 
 

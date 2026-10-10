@@ -1,10 +1,9 @@
-import triton_python_backend_utils as pb_utils  # Note: 'utils', not 'untils'
-import torch
-import torch.nn.functional as F
-
-import os
 import sys
 from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+import triton_python_backend_utils as pb_utils  # Note: 'utils', not 'untils'
 
 # Ensure repo root and TabDPT submodule are on sys.path
 _this_dir = Path(__file__).resolve()
@@ -23,9 +22,9 @@ from tabdpt.model import TabDPTModel
 
 # 2. Import your configuration paths
 try:
-    from src.config import MODEL_CONFIG, KV_CACHE, MODEL_ARTIFACT
+    from src.config import KV_CACHE, MODEL_ARTIFACT, MODEL_CONFIG
 except ImportError:
-    from config import MODEL_CONFIG, KV_CACHE, MODEL_ARTIFACT
+    from config import KV_CACHE, MODEL_ARTIFACT, MODEL_CONFIG
 
 
 class TritonPythonModel:
@@ -36,7 +35,7 @@ class TritonPythonModel:
         self.dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
 
         # Instantiate architecture and load weights
-        print(f"[Inference] Initializing TabDPTModel...")
+        print("[Inference] Initializing TabDPTModel...")
         self.model = TabDPTModel(**self.config)
 
         print(f"[Inference] Loading Model weights from {MODEL_ARTIFACT}")

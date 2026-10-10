@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+
 import torch
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
@@ -57,7 +58,7 @@ def save_model():
             repo_id=repo_id, filename="tabdpt1_3.safetensors", local_files_only=False
         )
         weight_file = "tabdpt1_3.safetensors"
-    except Exception as e:
+    except Exception:
         print("No 1.3 using 1.2")
         weights_path = hf_hub_download(
             repo_id=repo_id, filename="tabdpt1_2.safetensors", local_files_only=False

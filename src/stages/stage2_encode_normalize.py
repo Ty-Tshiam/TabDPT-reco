@@ -11,20 +11,18 @@ This module processes the engineered Parquet features output from Stage 1:
 7. Sinks the fully encoded and scaled dataset to data/processed/normalized_dataset.parquet.
 """
 
-import os
 import json
-from pathlib import Path
+
 import polars as pl
-import numpy as np
 
 from src.config import (
-    FEATURES_PARQUET,
-    NORMALIZED_DATASET_PARQUET,
     CATEGORICAL_MAPPINGS_JSON,
-    NORMALIZATION_STATS_JSON,
     EXPLICIT_CATEGORICAL_COLS,
+    FEATURES_PARQUET,
     NON_FEATURE_COLS,
-    ensure_directories_exist
+    NORMALIZATION_STATS_JSON,
+    NORMALIZED_DATASET_PARQUET,
+    ensure_directories_exist,
 )
 
 # Configure Polars display defaults for interactive debugging

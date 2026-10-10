@@ -11,6 +11,7 @@ Validates:
 
 import sys
 from pathlib import Path
+
 import numpy as np
 
 _repo_root = Path(__file__).resolve().parent.parent
@@ -18,8 +19,12 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 import time
+
 import tritonclient.grpc as grpcclient
-from src.config import SELECTED_15_TARGETS, OTHER_9_PRODUCTS, TARGET_TO_INDEX, INDEX_TO_TARGET
+
+from src.config import (
+    INDEX_TO_TARGET,
+)
 
 
 def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):

@@ -8,11 +8,9 @@ Powered by:
 - Redis Streams: Event-Driven Customer Actions & Output Broadcasts
 """
 
-import sys
-import os
 import json
+import sys
 import time
-import datetime
 from pathlib import Path
 
 # Add project root to sys.path
@@ -20,10 +18,9 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
-import streamlit as st
-import polars as pl
 import pandas as pd
-import numpy as np
+import polars as pl
+import streamlit as st
 import torch
 
 try:
@@ -33,20 +30,14 @@ except ImportError:
     TRITON_CLIENT_AVAILABLE = False
 
 from src.config import (
-    get_redis_client,
+    CLEAN_TEST_PARQUET,
+    INDEX_TO_TARGET,
+    RECS_TTL_SECONDS,
+    SELECTED_15_TARGETS,
     STREAM_CUSTOMER_EVENTS,
     STREAM_RECOMMENDATIONS,
-    CONSUMER_GROUP,
-    KEY_CUSTOMER_RECS,
-    RECS_TTL_SECONDS,
-    ACTION_RELEVANCE_MATRIX,
     TRITON_GRPC_URL,
-    CLEAN_TEST_PARQUET,
-    CLEAN_TRAIN_PARQUET,
-    TEST_TARGETS_PARQUET,
-    SELECTED_15_TARGETS,
-    INDEX_TO_TARGET,
-    TARGET_TO_INDEX
+    get_redis_client,
 )
 
 LOGO_PATH = _repo_root / "docs" / "TYLOGO.png"
@@ -472,7 +463,7 @@ def load_customer_dossier(customer_id: str):
             "row": row,
             "held_products": held
         }
-    except Exception as e:
+    except Exception:
         return None
 
 @st.cache_data(show_spinner=False)
@@ -483,16 +474,16 @@ def get_cached_customer_features(customer_id: str):
     Cached across user interactions so 185MB Parquet scan is executed only once.
     """
     from src.streaming.event_processor import (
+        device,
+        df,
+        dtype,
+        encode_and_normalize,
+        feature_engineering_pipeline,
+        get_already_held_mask,
         get_customer,
         get_customer_history,
-        feature_engineering_pipeline,
-        encode_and_normalize,
-        get_already_held_mask,
-        prepare_query,
-        df,
         history,
-        device,
-        dtype
+        prepare_query,
     )
     c_info = get_customer(customer_id, df)
     c_hist = get_customer_history(customer_id, history)
@@ -511,7 +502,8 @@ def run_customer_model_inference(customer_id: str):
     Cached in memory so repeated interactions (paycheck, deposit, utility bill)
     can evaluate next-best-action relevance and serve offers with sub-millisecond latency.
     """
-    from src.streaming.event_processor import format_predictions, client as triton_client
+    from src.streaming.event_processor import client as triton_client
+    from src.streaming.event_processor import format_predictions
 
     t_start = time.time()
     x_qry, held = get_cached_customer_features(customer_id)
@@ -998,13 +990,13 @@ with tab_ai:
 
     else:
         await_html = (
-            f'<div style="text-align: center; padding: 48px 20px; background: white; border-radius: 12px; border: 2px dashed #A7F3D0;">'
-            f'<span style="font-size: 2.5rem;">⚡</span>'
-            f'<h3 style="color: #065F46; margin: 12px 0 6px 0; font-weight: 700;">Awaiting Customer Activity</h3>'
-            f'<p style="color: #64748B; max-width: 500px; margin: 0 auto; font-size: 0.95rem;">'
-            f'Go to the <strong>🏦 Customer Online Bank Portal</strong> tab and simulate an activity to inspect real-time TabDPT predictions.'
-            f'</p>'
-            f'</div>'
+            '<div style="text-align: center; padding: 48px 20px; background: white; border-radius: 12px; border: 2px dashed #A7F3D0;">'
+            '<span style="font-size: 2.5rem;">⚡</span>'
+            '<h3 style="color: #065F46; margin: 12px 0 6px 0; font-weight: 700;">Awaiting Customer Activity</h3>'
+            '<p style="color: #64748B; max-width: 500px; margin: 0 auto; font-size: 0.95rem;">'
+            'Go to the <strong>🏦 Customer Online Bank Portal</strong> tab and simulate an activity to inspect real-time TabDPT predictions.'
+            '</p>'
+            '</div>'
         )
         st.markdown(await_html, unsafe_allow_html=True)
 

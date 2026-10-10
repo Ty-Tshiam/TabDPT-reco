@@ -14,9 +14,9 @@ Usage:
     python src/run_pipeline.py --stage 3    # Stratified sampling & PyTorch tensors
 """
 
+import argparse
 import sys
 import time
-import argparse
 from pathlib import Path
 
 # Ensure project root is in sys.path when executed directly

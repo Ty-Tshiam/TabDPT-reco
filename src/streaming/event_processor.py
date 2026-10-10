@@ -1,14 +1,14 @@
-import os
-import math
-import json
 import datetime
-import torch
-import time
+import json
+import math
+import os
 import sys
-import fakeredis
-import numpy as np
+import time
 from pathlib import Path
+
+import numpy as np
 import polars as pl
+import torch
 import tritonclient.grpc as grpcclient
 
 pl.Config.set_tbl_cols(-1)
@@ -19,57 +19,50 @@ sys.path.insert(0, str(project_root))
 
 try:
     from src.config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        INDEX_TO_TARGET,
-        INDEX_TO_TARGET,
-        OTHER_9_PRODUCTS,
+        ACTION_RELEVANCE_MATRIX,
         ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
         CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
+        CLEAN_TEST_PARQUET,
+        CLEAN_TRAIN_PARQUET,
+        CONSUMER_GROUP,
         CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
-        MODEL_CONFIG,
+        CORE_7_PRODUCTS,
+        CORE_10_PRODUCTS,
+        INDEX_TO_TARGET,
         KV_CACHE,
         MODEL_ARTIFACT,
+        MODEL_CONFIG,
+        NORMALIZATION_STATS_JSON,
+        OTHER_9_PRODUCTS,
+        RECS_TTL_SECONDS,
+        SELECTED_15_TARGETS,
         STREAM_CUSTOMER_EVENTS,
-        CONSUMER_GROUP,
-        get_redis_client,
-        ACTION_RELEVANCE_MATRIX,
         STREAM_RECOMMENDATIONS,
-        RECS_TTL_SECONDS
+        TARGET_TO_INDEX,
+        TEST_TARGETS_PARQUET,
+        Y_TENSOR_PATH,
+        get_redis_client,
     )
 except ImportError:
     from config import (
-        CLEAN_TRAIN_PARQUET,
-        CLEAN_TEST_PARQUET,
-        TEST_TARGETS_PARQUET,
-        SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
-        INDEX_TO_TARGET,
-        INDEX_TO_TARGET,
-        OTHER_9_PRODUCTS,
-        ALL_24_PRODUCTS,
-        CORE_10_PRODUCTS,
-        CORE_7_PRODUCTS,
-        CATEGORICAL_MAPPINGS_JSON,
-        NORMALIZATION_STATS_JSON,
-        CONTEXT_TENSOR_PATH,
-        Y_TENSOR_PATH,
-        MODEL_CONFIG,
-        KV_CACHE,
-        MODEL_ARTIFACT,
-        STREAM_CUSTOMER_EVENTS,
-        CONSUMER_GROUP,
-        get_redis_client,
         ACTION_RELEVANCE_MATRIX,
+        ALL_24_PRODUCTS,
+        CATEGORICAL_MAPPINGS_JSON,
+        CLEAN_TEST_PARQUET,
+        CLEAN_TRAIN_PARQUET,
+        CONSUMER_GROUP,
+        CONTEXT_TENSOR_PATH,
+        CORE_7_PRODUCTS,
+        CORE_10_PRODUCTS,
+        INDEX_TO_TARGET,
+        NORMALIZATION_STATS_JSON,
+        RECS_TTL_SECONDS,
+        SELECTED_15_TARGETS,
+        STREAM_CUSTOMER_EVENTS,
         STREAM_RECOMMENDATIONS,
-        RECS_TTL_SECONDS
+        TEST_TARGETS_PARQUET,
+        Y_TENSOR_PATH,
+        get_redis_client,
     )
 
 df = pl.scan_parquet(str(CLEAN_TEST_PARQUET))
@@ -427,7 +420,7 @@ if __name__ == "__main__":
                         
                         processed_customer = encode_and_normalize(engineered_customer)
                         query = processed_customer.drop("customer_id", "snapshot_date").to_torch().to(torch.float32)
-                        print(f'[Worker] Processed customer info')
+                        print('[Worker] Processed customer info')
 
                         x_qry = prepare_query(query.to(device, dtype=dtype)).to(torch.float32).cpu().numpy()
                         print(f'[Worker] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}')
