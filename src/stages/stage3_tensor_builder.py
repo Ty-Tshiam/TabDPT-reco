@@ -33,7 +33,9 @@ pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 
 
-def safe_sample(group_df: pl.DataFrame, target_count: int, seed: int = 42) -> pl.DataFrame:
+def safe_sample(
+    group_df: pl.DataFrame, target_count: int, seed: int = 42
+) -> pl.DataFrame:
     """
     Safely samples up to `target_count` rows from a DataFrame or group,
     avoiding out-of-bounds exceptions if the group size is smaller than requested.
@@ -71,22 +73,24 @@ def extract_stratified_sample(df: pl.LazyFrame) -> pl.DataFrame:
     cutoff_date = pl.lit(max_date).dt.offset_by("-6mo")
     print(f"[Stage 3] Max Date: {max_date}, Cutoff Date: {cutoff_date}")
 
-    print("[Stage 3] Sampling Stratum 1: 45,000 recent product purchases (last 6 months, 3k/class)...")
+    print(
+        "[Stage 3] Sampling Stratum 1: 45,000 recent product purchases (last 6 months, 3k/class)..."
+    )
     recent_purchases = (
         df.filter(
-            (pl.col("target_class") != 0)
-            & (pl.col("snapshot_date") >= cutoff_date)
+            (pl.col("target_class") != 0) & (pl.col("snapshot_date") >= cutoff_date)
         )
         .collect()
         .group_by("target_class")
         .map_groups(lambda group: safe_sample(group, 3000, 42))
     )
 
-    print("[Stage 3] Sampling Stratum 2: 15,000 historical product purchases (older than 6 months, 1k/class)...")
+    print(
+        "[Stage 3] Sampling Stratum 2: 15,000 historical product purchases (older than 6 months, 1k/class)..."
+    )
     historical_purchases = (
         df.filter(
-            (pl.col("target_class") != 0)
-            & (pl.col("snapshot_date") < cutoff_date)
+            (pl.col("target_class") != 0) & (pl.col("snapshot_date") < cutoff_date)
         )
         .collect()
         .group_by("target_class")
@@ -138,14 +142,16 @@ def extract_stratified_sample(df: pl.LazyFrame) -> pl.DataFrame:
     )
 
     print("[Stage 3] Concatenating all 6 strata into final balanced dataset...")
-    return pl.concat([
-        recent_purchases,
-        historical_purchases,
-        recent_active_non_purchases,
-        historical_active_non_purchases,
-        recent_inactive_non_purchases,
-        historical_inactive_non_purchases
-    ])
+    return pl.concat(
+        [
+            recent_purchases,
+            historical_purchases,
+            recent_active_non_purchases,
+            historical_active_non_purchases,
+            recent_inactive_non_purchases,
+            historical_inactive_non_purchases,
+        ]
+    )
 
 
 def build_tensors(sample_df: pl.DataFrame, target_dimension: int = 128) -> tuple:
@@ -165,16 +171,22 @@ def build_tensors(sample_df: pl.DataFrame, target_dimension: int = 128) -> tuple
 
     # 2. Raw feature matrix
     feature_columns = [c for c in sample_df.columns if c not in NON_FEATURE_COLS]
-    sample_df_clipped = sample_df.with_columns(pl.col(feature_columns).clip(-10.0, 10.0))
+    sample_df_clipped = sample_df.with_columns(
+        pl.col(feature_columns).clip(-10.0, 10.0)
+    )
     feature_matrix = sample_df_clipped.select(feature_columns).to_numpy()
 
     num_rows, num_features = feature_matrix.shape
-    print(f"[Stage 3] Matrix shape before padding: {num_rows} rows x {num_features} features")
+    print(
+        f"[Stage 3] Matrix shape before padding: {num_rows} rows x {num_features} features"
+    )
 
     # 3. Zero-padding up to target_dimension columns
     padding_width = target_dimension - num_features
     if padding_width < 0:
-        raise ValueError(f"Feature count ({num_features}) exceeds target dimension ({target_dimension})!")
+        raise ValueError(
+            f"Feature count ({num_features}) exceeds target dimension ({target_dimension})!"
+        )
 
     zero_padding = np.zeros((num_rows, padding_width), dtype=np.float32)
     padded_matrix = np.hstack([feature_matrix, zero_padding])
@@ -198,7 +210,9 @@ def run_stage3(input_parquet_path: str | None = None):
     input_path = str(input_parquet_path or NORMALIZED_DATASET_PARQUET)
 
     if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Normalized dataset not found at: {input_path}. Please run Stage 2 first.")
+        raise FileNotFoundError(
+            f"Normalized dataset not found at: {input_path}. Please run Stage 2 first."
+        )
 
     print(f"[Stage 3] Scanning normalized dataset from: {input_path}")
     df = pl.scan_parquet(input_path)
@@ -210,8 +224,12 @@ def run_stage3(input_parquet_path: str | None = None):
     # Build Tensors
     context_tensor, y_tensor = build_tensors(stratified_sample, target_dimension=128)
 
-    print(f"[Stage 3] Final Context Tensor Shape: {context_tensor.shape}, Dtype: {context_tensor.dtype}")
-    print(f"[Stage 3] Final Target Tensor Shape: {y_tensor.shape}, Dtype: {y_tensor.dtype}")
+    print(
+        f"[Stage 3] Final Context Tensor Shape: {context_tensor.shape}, Dtype: {context_tensor.dtype}"
+    )
+    print(
+        f"[Stage 3] Final Target Tensor Shape: {y_tensor.shape}, Dtype: {y_tensor.dtype}"
+    )
 
     # Save to disk
     print(f"[Stage 3] Saving context tensor to: {CONTEXT_TENSOR_PATH}")

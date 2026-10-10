@@ -36,7 +36,9 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
         self.dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         self.config = MODEL_CONFIG["settings"]
 
-        print(f"[TritonService] Initializing TabDPTModel on {self.device} ({self.dtype})...")
+        print(
+            f"[TritonService] Initializing TabDPTModel on {self.device} ({self.dtype})..."
+        )
         self.model = TabDPTModel(**self.config)
 
         print(f"[TritonService] Loading model weights from {MODEL_ARTIFACT}...")
@@ -45,16 +47,19 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
         self.model.to(self.device, dtype=self.dtype).eval()
 
         print(f"[TritonService] Loading KV-cache from {KV_CACHE}...")
-        self.kv_cache, self.n_ctx, self.stats = torch.load(str(KV_CACHE), map_location=self.device)
+        self.kv_cache, self.n_ctx, self.stats = torch.load(
+            str(KV_CACHE), map_location=self.device
+        )
 
-    
         if torch.cuda.is_available() and hasattr(torch, "compile"):
             print("[TritonService] Compiling predict_with_cache with torch.compile...")
             self.predict_fn = torch.compile(self.model.predict_with_cache)
         else:
             self.predict_fn = self.model.predict_with_cache
 
-        print("[TritonService] Model successfully initialized and ready for gRPC inference!")
+        print(
+            "[TritonService] Model successfully initialized and ready for gRPC inference!"
+        )
 
     def ServerLive(self, request, context):
         return pb2.ServerLiveResponse(live=True)
@@ -100,7 +105,9 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
                 break
 
         if input_meta is None:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Missing input: QUERY_FEATURES")
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT, "Missing input: QUERY_FEATURES"
+            )
 
         # 2. Extract raw bytes to NumPy array
         shape = list(input_meta.shape)

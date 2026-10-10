@@ -37,7 +37,7 @@ def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):
             if client.is_server_live():
                 server_live = True
                 break
-        except Exception: # noqa: BLE001
+        except Exception:  # noqa: BLE001
             if attempt < retries - 1:
                 time.sleep(retry_delay)
     assert server_live, "Triton Server is not live"
@@ -60,8 +60,12 @@ def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):
     # 4. Assertions
     assert probs is not None, "Inference response returned None"
     assert probs.shape == (1, 16), f"Expected shape (1, 16), got {probs.shape}"
-    assert np.isclose(probs.sum(), 1.0, atol=1e-3), f"Probabilities do not sum to 1: {probs.sum()}"
-    assert np.all(probs >= 0.0) and np.all(probs <= 1.0), "Probabilities out of [0, 1] range"
+    assert np.isclose(probs.sum(), 1.0, atol=1e-3), (
+        f"Probabilities do not sum to 1: {probs.sum()}"
+    )
+    assert np.all(probs >= 0.0) and np.all(probs <= 1.0), (
+        "Probabilities out of [0, 1] range"
+    )
 
     # 5. Class ranking
     probs_1d = probs.squeeze()
@@ -69,7 +73,9 @@ def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):
     ranked_products = [INDEX_TO_TARGET[i] for i in sorted_indices]
 
     print("\n--- Triton gRPC Test Results ---")
-    print(f"Top-1 Recommended Product: {ranked_products[0]} (p={probs_1d[sorted_indices[0]]:.4f})")
+    print(
+        f"Top-1 Recommended Product: {ranked_products[0]} (p={probs_1d[sorted_indices[0]]:.4f})"
+    )
     print("Top-7 Product Recommendations:")
     for rank, idx in enumerate(sorted_indices[:7], 1):
         print(f"  {rank}. {INDEX_TO_TARGET[idx]:<25} (prob = {probs_1d[idx]:.4f})")

@@ -41,13 +41,13 @@ Stages:
   2: Categorical Frequency Encoding & Global Normalization (Features -> Normalized Parquet)
   3: Stratified Subsampling & PyTorch Tensor Export (Normalized Parquet -> context.pt, y.pt)
   all: Run Stages 1, 2, and 3 sequentially
-        """
+        """,
     )
     parser.add_argument(
         "--stage",
         choices=["1", "2", "3", "all"],
         default="all",
-        help="Pipeline stage to execute (default: all)"
+        help="Pipeline stage to execute (default: all)",
     )
     return parser.parse_args()
 
@@ -69,7 +69,9 @@ def main():
         print(f">>> Stage 1 Finished in {time.time() - t0:.1f}s")
 
     if args.stage in ("2", "all"):
-        print("\n>>> Launching Stage 2: Categorical Frequency Encoding & Global Normalization...")
+        print(
+            "\n>>> Launching Stage 2: Categorical Frequency Encoding & Global Normalization..."
+        )
         t0 = time.time()
         run_stage2()
         print(f">>> Stage 2 Finished in {time.time() - t0:.1f}s")

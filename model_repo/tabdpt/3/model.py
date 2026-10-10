@@ -8,7 +8,7 @@ import triton_python_backend_utils as pb_utils  # Note: 'utils', not 'untils'
 # Ensure repo root and TabDPT submodule are on sys.path
 _this_dir = Path(__file__).resolve()
 for candidate_dir in [
-    _this_dir.parents[3],                                   # repo root from model_repo/tabdpt/3/model.py
+    _this_dir.parents[3],  # repo root from model_repo/tabdpt/3/model.py
     _this_dir.parents[3] / "src" / "TabDPT-inference" / "src",
     Path("/workspace"),
     Path("/workspace/TabDPT-reco"),
@@ -45,10 +45,12 @@ class TritonPythonModel:
 
         # Load precomputed KV cache (Context and y are baked into this!)
         print(f"[Inference] Loading KV Cache from {KV_CACHE}")
-        self.kv_cache, self.n_ctx, self.stats = torch.load(str(KV_CACHE), map_location=self.device)
+        self.kv_cache, self.n_ctx, self.stats = torch.load(
+            str(KV_CACHE), map_location=self.device
+        )
 
         # Optimize inference method with torch.compile if supported
-    
+
         if torch.cuda.is_available() and hasattr(torch, "compile"):
             self.predict_fn = torch.compile(self.model.predict_with_cache)
         else:
@@ -56,7 +58,7 @@ class TritonPythonModel:
 
     def execute(self, requests):
         """
-        Called on every inference cycle. 
+        Called on every inference cycle.
         'requests' contains 1 or more incoming queries batched by Triton.
         """
         responses = []
@@ -67,9 +69,7 @@ class TritonPythonModel:
             in_tensor = pb_utils.get_input_tensor_by_name(request, "QUERY_FEATURES")
             # Convert NumPy -> PyTorch tensor on GPU with target dtype
             tensor_gpu = torch.as_tensor(
-                in_tensor.as_numpy(), 
-                device=self.device, 
-                dtype=self.dtype
+                in_tensor.as_numpy(), device=self.device, dtype=self.dtype
             )
             batch_tensors.append(tensor_gpu)
 

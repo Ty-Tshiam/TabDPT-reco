@@ -57,7 +57,6 @@ def save_model():
     weights_path = hf_hub_download(
         repo_id=repo_id, filename=weight_file, local_files_only=False
     )
-    
 
     print(f"[Model] Downloading HuggingFace weights {weight_file} from {weights_path}")
     print(f"[Model] Loading Model on {device} with {dtype}")
@@ -68,7 +67,11 @@ def save_model():
     rebuild = "--force" in sys.argv
     if os.path.exists(KV_CACHE) and not rebuild:
         cached = torch.load(str(KV_CACHE), map_location="cpu")
-        if not isinstance(cached, tuple) or len(cached) != 3 or not isinstance(cached[2], dict):
+        if (
+            not isinstance(cached, tuple)
+            or len(cached) != 3
+            or not isinstance(cached[2], dict)
+        ):
             print("[Model] Existing cache format is outdated, re-encoding...")
             rebuild = True
 

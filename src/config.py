@@ -51,6 +51,7 @@ Y_TENSOR_PATH = TENSORS_DIR / "y.pt"
 KV_CACHE = TENSORS_DIR / "context_kv_cache.pt"
 MODEL_ARTIFACT = PROJECT_ROOT / "model_repo" / "tabdpt" / "3" / "model.pt"
 
+
 def ensure_directories_exist():
     """Ensure all standard data subdirectories exist."""
     for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR, METADATA_DIR, TENSORS_DIR]:
@@ -117,28 +118,32 @@ COLUMN_MAPPING = {
 
 # The 15 active products selected for TabDPT modeling (Classes 1..15, Class 0 is 'do_nothing')
 SELECTED_15_TARGETS = [
-    "current_account",          # Class 1
-    "payroll_account",          # Class 2
-    "credit_card",              # Class 3
-    "pensions",                 # Class 4
-    "mortgage",                 # Class 5
-    "securities",               # Class 6
+    "current_account",  # Class 1
+    "payroll_account",  # Class 2
+    "credit_card",  # Class 3
+    "pensions",  # Class 4
+    "mortgage",  # Class 5
+    "securities",  # Class 6
     "particular_plus_account",  # Class 7
-    "particular_account",       # Class 8
-    "funds",                    # Class 9
-    "direct_debit",             # Class 10
-    "payroll",                  # Class 11
+    "particular_account",  # Class 8
+    "funds",  # Class 9
+    "direct_debit",  # Class 10
+    "payroll",  # Class 11
     "more_particular_account",  # Class 12
-    "e_account",                # Class 13
-    "long_term_deposits",       # Class 14
-    "taxes"                     # Class 15
+    "e_account",  # Class 13
+    "long_term_deposits",  # Class 14
+    "taxes",  # Class 15
 ]
 
 # Mapping from product name to target integer class (1..15)
-TARGET_TO_INDEX = {col_name: idx + 1 for idx, col_name in enumerate(SELECTED_15_TARGETS)}
+TARGET_TO_INDEX = {
+    col_name: idx + 1 for idx, col_name in enumerate(SELECTED_15_TARGETS)
+}
 
 # Mapping from target integer class (0..15) to product name
-INDEX_TO_TARGET = {idx + 1: col_name for idx, col_name in enumerate(SELECTED_15_TARGETS)}
+INDEX_TO_TARGET = {
+    idx + 1: col_name for idx, col_name in enumerate(SELECTED_15_TARGETS)
+}
 INDEX_TO_TARGET[0] = "do_nothing"
 
 # The other 9 products in Santander ecosystem (tracked for lag1 ecosystem holdings)
@@ -151,7 +156,7 @@ OTHER_9_PRODUCTS = [
     "medium_term_deposits",
     "pensions_plan",
     "loans",
-    "home_account"
+    "home_account",
 ]
 
 # All 24 Santander financial products
@@ -159,14 +164,27 @@ ALL_24_PRODUCTS = SELECTED_15_TARGETS + OTHER_9_PRODUCTS
 
 # Core 10 products for lag2 tracking and portfolio size
 CORE_10_PRODUCTS = [
-    "current_account", "payroll_account", "credit_card", "direct_debit", "payroll",
-    "pensions", "particular_account", "e_account", "long_term_deposits", "taxes"
+    "current_account",
+    "payroll_account",
+    "credit_card",
+    "direct_debit",
+    "payroll",
+    "pensions",
+    "particular_account",
+    "e_account",
+    "long_term_deposits",
+    "taxes",
 ]
 
 # Core 7 products for delta (lag1 - lag2) acquisition/churn velocity
 CORE_7_PRODUCTS = [
-    "current_account", "payroll_account", "credit_card", "direct_debit",
-    "payroll", "particular_account", "e_account"
+    "current_account",
+    "payroll_account",
+    "credit_card",
+    "direct_debit",
+    "payroll",
+    "particular_account",
+    "e_account",
 ]
 
 # Columns that are categorical even if stored as numbers in raw data
@@ -176,101 +194,94 @@ EXPLICIT_CATEGORICAL_COLS = {"province_code", "customer_relation_primary"}
 NON_FEATURE_COLS = ["customer_id", "snapshot_date", "target_class"]
 
 MODEL_CONFIG = {
-  "version": "0.0.2",
-  "description": "TabDPT",
-  "seed": 42,
-  "exp_name": "large-cont",
-  "folder": "large-cont",
-  "exp_path": "runs/large-cont/large-cont",
-  "env": {
-    "device": "cuda:0",
-    "gpus": [0, 1, 2, 3],
-    "num_workers": 32
-  },
-  "model": {
-    "emsize": 512,
-    "max_num_classes": 16,
-    "regression_bin_count": 2048,
-    "regression_bin_min": -10,
-    "regression_bin_max": 10,
-    "max_num_features": 128,
-    "max_eval_context": 1048576,
-    "min_eval_context": 64,
-    "nhead": 8,
-    "ff_dim": 512,
-    "nlayers": 32,
-    "y_encoder_dim": 128,
-    "enc_cell_dim": -1,
-    "num_col_attn_layers": 2,
-    "n_thinking_rows": 64,
-    "clip_n_sigma": 8
-  },
-  "training": {
-    "num_model_updates": 128,
-    "per_update_rows": 1048576,
-    "per_gpu_rows": 65536,
-    "weight_decay": 0.05,
-    "dropout": 0.0,
-    "min_context_samples": 128,
-    "min_queries": 128,
-    "seq_lens": [512, 1024, 2048, 4096, 8192, 16384, 32768],
-    "eval_seq_len": 262144,
-    "reset_policy": "cnt",
-    "resume_from": "runs/large/large/latest.ckpt",
-    "clip_grad_norm": 4.0,
-    "lawa_enabled": True,
-    "lawa_k": 5,
-    "lawa_freq": 1,
-    "warmup_steps": 0,
-    "num_epochs": 2304,
-    "peak_lr": 2e-05,
-    "final_lr": 2e-05,
-    "encoder_weight_decay": 0.01,
-    "equi_encoder_clip_grad_norm_multiplier": 3.0,
-    "equi_isotropy_weight": 0.05,
-    "z_loss_weight": 0.0001,
-    "context_pred_loss_weight": 0.01
-  },
-  "data": {
-    "y_reg_augment": True,
-    "cls_shuffle_label_prob": 1.0,
-    "discrete_class_merge_prob": 0.0,
-    "synthetic_cls_prob": 0.5,
-    "max_sample_attempts": 100,
-    "drift_prob": 0.0,
-    "datasets_file": "tabdpt_datasets/training/extended_openml_filtered_deduped.csv",
-    "mmap": False,
-    "kaggle_data_path": None
-  },
-  "logging": {
-    "eval_every": 1,
-    "eval_n_ensembles": 1,
-    "eval_ensemble_seed": None,
-    "save_metrics": {
-      "cls-cc18-ce": "min",
-      "reg-ctr-r2": "max"
+    "version": "0.0.2",
+    "description": "TabDPT",
+    "seed": 42,
+    "exp_name": "large-cont",
+    "folder": "large-cont",
+    "exp_path": "runs/large-cont/large-cont",
+    "env": {"device": "cuda:0", "gpus": [0, 1, 2, 3], "num_workers": 32},
+    "model": {
+        "emsize": 512,
+        "max_num_classes": 16,
+        "regression_bin_count": 2048,
+        "regression_bin_min": -10,
+        "regression_bin_max": 10,
+        "max_num_features": 128,
+        "max_eval_context": 1048576,
+        "min_eval_context": 64,
+        "nhead": 8,
+        "ff_dim": 512,
+        "nlayers": 32,
+        "y_encoder_dim": 128,
+        "enc_cell_dim": -1,
+        "num_col_attn_layers": 2,
+        "n_thinking_rows": 64,
+        "clip_n_sigma": 8,
     },
-    "top_saved_count": 5
-  },
-  "settings": {
-    "num_features": 128,           
-    "enc_cell_dim": -1,            
-    "ninp": 512,                  
-    "nhid": 512,                   
-    "nhead": 8,                    
-    "nlayers": 32,                 
-    "dropout": 0.0,                
-    "n_out": 16,                   
-    "regression_bin_count": 2048,  
-    "regression_bin_min": -10,     
-    "regression_bin_max": 10,      
-    "base_len": 64,                
-    "max_len": 1048576,            
-    "y_encoder_dim": 128,          
-    "num_col_attn_layers": 2,      
-    "n_thinking_rows": 64,         
-    "clip_sigma": 8.0,             
-  }
+    "training": {
+        "num_model_updates": 128,
+        "per_update_rows": 1048576,
+        "per_gpu_rows": 65536,
+        "weight_decay": 0.05,
+        "dropout": 0.0,
+        "min_context_samples": 128,
+        "min_queries": 128,
+        "seq_lens": [512, 1024, 2048, 4096, 8192, 16384, 32768],
+        "eval_seq_len": 262144,
+        "reset_policy": "cnt",
+        "resume_from": "runs/large/large/latest.ckpt",
+        "clip_grad_norm": 4.0,
+        "lawa_enabled": True,
+        "lawa_k": 5,
+        "lawa_freq": 1,
+        "warmup_steps": 0,
+        "num_epochs": 2304,
+        "peak_lr": 2e-05,
+        "final_lr": 2e-05,
+        "encoder_weight_decay": 0.01,
+        "equi_encoder_clip_grad_norm_multiplier": 3.0,
+        "equi_isotropy_weight": 0.05,
+        "z_loss_weight": 0.0001,
+        "context_pred_loss_weight": 0.01,
+    },
+    "data": {
+        "y_reg_augment": True,
+        "cls_shuffle_label_prob": 1.0,
+        "discrete_class_merge_prob": 0.0,
+        "synthetic_cls_prob": 0.5,
+        "max_sample_attempts": 100,
+        "drift_prob": 0.0,
+        "datasets_file": "tabdpt_datasets/training/extended_openml_filtered_deduped.csv",
+        "mmap": False,
+        "kaggle_data_path": None,
+    },
+    "logging": {
+        "eval_every": 1,
+        "eval_n_ensembles": 1,
+        "eval_ensemble_seed": None,
+        "save_metrics": {"cls-cc18-ce": "min", "reg-ctr-r2": "max"},
+        "top_saved_count": 5,
+    },
+    "settings": {
+        "num_features": 128,
+        "enc_cell_dim": -1,
+        "ninp": 512,
+        "nhid": 512,
+        "nhead": 8,
+        "nlayers": 32,
+        "dropout": 0.0,
+        "n_out": 16,
+        "regression_bin_count": 2048,
+        "regression_bin_min": -10,
+        "regression_bin_max": 10,
+        "base_len": 64,
+        "max_len": 1048576,
+        "y_encoder_dim": 128,
+        "num_col_attn_layers": 2,
+        "n_thinking_rows": 64,
+        "clip_sigma": 8.0,
+    },
 }
 
 # ==============================================================================

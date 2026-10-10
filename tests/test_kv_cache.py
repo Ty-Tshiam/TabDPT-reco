@@ -79,7 +79,9 @@ class TestKVCacheEquivalence:
 
         with torch.no_grad():
             full_out = model(x_full, y_ctx, is_cls=False)
-            kv_cache, n_ctx_ret, stats = model.encode_context(x_ctx, y_ctx, is_cls=False)
+            kv_cache, n_ctx_ret, stats = model.encode_context(
+                x_ctx, y_ctx, is_cls=False
+            )
             cache_out = model.predict_with_cache(x_qry, kv_cache, n_ctx_ret, stats)
 
         assert full_out.shape == cache_out.shape
@@ -112,7 +114,9 @@ class TestKVCacheEquivalence:
 
         with torch.no_grad():
             cached_pack = model.encode_context(x_ctx, y_ctx, is_cls=True)
-            out_unpacked = model.predict_with_cache(x_qry, cached_pack[0], cached_pack[1], cached_pack[2])
+            out_unpacked = model.predict_with_cache(
+                x_qry, cached_pack[0], cached_pack[1], cached_pack[2]
+            )
             out_packed = model.predict_with_cache(x_qry, cached_pack)
 
         assert torch.allclose(out_unpacked, out_packed, atol=1e-6)
@@ -145,21 +149,30 @@ class TestKVCacheEquivalence:
         x_qry = torch.randn(1, 2, 12)
 
         with torch.no_grad():
-            kv_cache, n_ctx, stats_dict = model.encode_context(x_ctx, y_ctx, is_cls=True)
+            kv_cache, n_ctx, stats_dict = model.encode_context(
+                x_ctx, y_ctx, is_cls=True
+            )
             out_dict = model.predict_with_cache(x_qry, kv_cache, n_ctx, stats_dict)
 
             # Test 6-tuple stats
             stats_tuple_6 = (
-                stats_dict["c1_min"], stats_dict["c1_max"],
-                stats_dict["norm_mean"], stats_dict["norm_std"],
-                stats_dict["c3_min"], stats_dict["c3_max"]
+                stats_dict["c1_min"],
+                stats_dict["c1_max"],
+                stats_dict["norm_mean"],
+                stats_dict["norm_std"],
+                stats_dict["c3_min"],
+                stats_dict["c3_max"],
             )
-            out_tuple_6 = model.predict_with_cache(x_qry, kv_cache, n_ctx, stats_tuple_6)
+            out_tuple_6 = model.predict_with_cache(
+                x_qry, kv_cache, n_ctx, stats_tuple_6
+            )
             assert torch.allclose(out_dict, out_tuple_6, atol=1e-6)
 
             # Test 2-tuple stats (mean, std)
             stats_tuple_2 = (stats_dict["norm_mean"], stats_dict["norm_std"])
-            out_tuple_2 = model.predict_with_cache(x_qry, kv_cache, n_ctx, stats_tuple_2)
+            out_tuple_2 = model.predict_with_cache(
+                x_qry, kv_cache, n_ctx, stats_tuple_2
+            )
             assert out_tuple_2.shape == out_dict.shape
 
             # Test stats=None

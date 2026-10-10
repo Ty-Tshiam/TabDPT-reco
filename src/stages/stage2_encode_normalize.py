@@ -30,7 +30,9 @@ pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(5)
 
 
-def build_categorical_frequency_mappings(categorical_columns: list, df: pl.LazyFrame) -> dict:
+def build_categorical_frequency_mappings(
+    categorical_columns: list, df: pl.LazyFrame
+) -> dict:
     """
     Computes frequency-ordered integer encodings for each categorical feature.
     The most frequent category receives index 0, the next receives 1, and so on.
@@ -62,7 +64,9 @@ def build_categorical_frequency_mappings(categorical_columns: list, df: pl.LazyF
     return mappings
 
 
-def apply_categorical_encodings(df: pl.LazyFrame, categorical_mappings: dict) -> pl.LazyFrame:
+def apply_categorical_encodings(
+    df: pl.LazyFrame, categorical_mappings: dict
+) -> pl.LazyFrame:
     """
     Applies categorical mapping expressions with robust fallbacks for unseen values.
 
@@ -77,7 +81,9 @@ def apply_categorical_encodings(df: pl.LazyFrame, categorical_mappings: dict) ->
 
     for col_name, mapping in categorical_mappings.items():
         # Determine fallback index for unseen categories (UNKNOWN, OTHER, or max_idx + 1)
-        fallback_index = mapping.get("UNKNOWN", mapping.get("OTHER", max(mapping.values()) + 1))
+        fallback_index = mapping.get(
+            "UNKNOWN", mapping.get("OTHER", max(mapping.values()) + 1)
+        )
 
         # Detect whether mapping keys are integers or strings to ensure correct type casting
         sample_key = next(iter(mapping.keys()))
@@ -94,7 +100,9 @@ def apply_categorical_encodings(df: pl.LazyFrame, categorical_mappings: dict) ->
     return df.with_columns(encoding_expressions)
 
 
-def compute_global_normalization_stats(df: pl.LazyFrame, feature_columns: list) -> tuple:
+def compute_global_normalization_stats(
+    df: pl.LazyFrame, feature_columns: list
+) -> tuple:
     """
     Flattens all numeric feature values across the dataset to compute a single
     global mean and standard deviation (used by TabDPT transformers).
@@ -106,13 +114,10 @@ def compute_global_normalization_stats(df: pl.LazyFrame, feature_columns: list) 
     Returns:
         Tuple of (global_mean: float, global_std: float).
     """
-    print("[Stage 2] Collecting and flattening feature matrix to compute global mean and std...")
-    feature_matrix_flattened = (
-        df.select(feature_columns)
-        .collect()
-        .to_numpy()
-        .flatten()
+    print(
+        "[Stage 2] Collecting and flattening feature matrix to compute global mean and std..."
     )
+    feature_matrix_flattened = df.select(feature_columns).collect().to_numpy().flatten()
 
     global_mean = float(feature_matrix_flattened.mean())
     global_std = float(feature_matrix_flattened.std())
@@ -131,7 +136,9 @@ def run_stage2(input_parquet_path: str | None = None):
     """
     ensure_directories_exist()
     input_path = input_parquet_path or (
-        str(FEATURES_PARQUET / "*.parquet") if FEATURES_PARQUET.is_dir() else str(FEATURES_PARQUET)
+        str(FEATURES_PARQUET / "*.parquet")
+        if FEATURES_PARQUET.is_dir()
+        else str(FEATURES_PARQUET)
     )
 
     print(f"[Stage 2] Scanning features from: {input_path}")
@@ -144,10 +151,15 @@ def run_stage2(input_parquet_path: str | None = None):
     for col_name, dtype in schema.items():
         if col_name in NON_FEATURE_COLS:
             continue
-        if dtype in (pl.String, pl.Categorical) or col_name in EXPLICIT_CATEGORICAL_COLS:
+        if (
+            dtype in (pl.String, pl.Categorical)
+            or col_name in EXPLICIT_CATEGORICAL_COLS
+        ):
             categorical_columns.append(col_name)
 
-    print(f"[Stage 2] Discovered {len(categorical_columns)} categorical features to encode: {categorical_columns}")
+    print(
+        f"[Stage 2] Discovered {len(categorical_columns)} categorical features to encode: {categorical_columns}"
+    )
 
     # 2. Build Frequency Mappings
     categorical_mappings = build_categorical_frequency_mappings(categorical_columns, df)
@@ -162,8 +174,12 @@ def run_stage2(input_parquet_path: str | None = None):
     all_column_names = schema.names()
     feature_columns = [c for c in all_column_names if c not in NON_FEATURE_COLS]
 
-    global_mean, global_std = compute_global_normalization_stats(df_encoded, feature_columns)
-    print(f"[Stage 2] Global Normalization - Mean: {global_mean:.6f}, Std: {global_std:.6f}")
+    global_mean, global_std = compute_global_normalization_stats(
+        df_encoded, feature_columns
+    )
+    print(
+        f"[Stage 2] Global Normalization - Mean: {global_mean:.6f}, Std: {global_std:.6f}"
+    )
 
     df_normalized = df_encoded.with_columns(
         (pl.col(feature_columns) - global_mean) / global_std
@@ -174,10 +190,7 @@ def run_stage2(input_parquet_path: str | None = None):
     with open(CATEGORICAL_MAPPINGS_JSON, "w") as f:
         json.dump(categorical_mappings, f, indent=2)
 
-    normalization_stats = {
-        "mean": global_mean,
-        "std": global_std
-    }
+    normalization_stats = {"mean": global_mean, "std": global_std}
     print(f"[Stage 2] Saving normalization stats to: {NORMALIZATION_STATS_JSON}")
     with open(NORMALIZATION_STATS_JSON, "w") as f:
         json.dump(normalization_stats, f, indent=2)

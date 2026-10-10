@@ -13,6 +13,7 @@ Key Responsibilities:
 6. Construct 16-class target (0 = do nothing, 1..15 = product additions).
 7. Save partitioned Parquet datasets to data/processed/.
 """
+
 # python src/run_pipeline.py --stage all >> output.log 2>&1
 import math
 import os
@@ -44,7 +45,9 @@ from src.config import (
 )
 
 
-def create_spark_session(app_name: str = "SantanderTabDPTPipeline", driver_memory: str = "6g") -> SparkSession:
+def create_spark_session(
+    app_name: str = "SantanderTabDPTPipeline", driver_memory: str = "6g"
+) -> SparkSession:
     """
     Builds and returns an optimized PySpark session for single-node execution.
 
@@ -56,8 +59,7 @@ def create_spark_session(app_name: str = "SantanderTabDPTPipeline", driver_memor
         Active SparkSession instance.
     """
     return (
-        SparkSession.builder
-        .appName(app_name)
+        SparkSession.builder.appName(app_name)
         .master("local[*]")
         .config("spark.driver.memory", driver_memory)
         .config("spark.executor.memory", driver_memory)
@@ -84,9 +86,8 @@ def load_raw_data(spark: SparkSession, train_csv_path: str | None = None):
         raise FileNotFoundError(f"Raw train CSV not found at: {csv_path}")
 
     print(f"[Stage 1] Loading raw CSV from: {csv_path}")
-    return (
-        spark.read.csv(csv_path, header=True, inferSchema=False)
-        .withColumnsRenamed(COLUMN_MAPPING)
+    return spark.read.csv(csv_path, header=True, inferSchema=False).withColumnsRenamed(
+        COLUMN_MAPPING
     )
 
 
@@ -111,43 +112,62 @@ def clean_pipeline(df):
         if col_type == "string":
             df = df.withColumn(
                 col_name,
-                F.when(F.trim(F.col(col_name)).isin("NA", "", "nan", "NULL"), None)
-                .otherwise(F.trim(F.col(col_name)))
+                F.when(
+                    F.trim(F.col(col_name)).isin("NA", "", "nan", "NULL"), None
+                ).otherwise(F.trim(F.col(col_name))),
             )
 
     # Clean demographics and account metadata
     df = (
-        df
-        .withColumn("customer_id", F.col("customer_id").cast(StringType()))
+        df.withColumn("customer_id", F.col("customer_id").cast(StringType()))
         .withColumn("snapshot_date", F.to_date(F.col("snapshot_date"), "yyyy-MM-dd"))
         .withColumn("join_date", F.to_date(F.col("join_date"), "yyyy-MM-dd"))
-        .withColumn("last_date_primary_customer", F.to_date(F.col("last_date_primary_customer"), "yyyy-MM-dd"))
+        .withColumn(
+            "last_date_primary_customer",
+            F.to_date(F.col("last_date_primary_customer"), "yyyy-MM-dd"),
+        )
         .withColumn(
             "gender",
             F.when(F.col("gender") == "H", "F")
             .when(F.col("gender") == "V", "M")
-            .otherwise("Unknown")
+            .otherwise("Unknown"),
         )
         .withColumn("age", F.col("age").cast(IntegerType()))
         .withColumn("seniority_months", F.col("seniority_months").cast(IntegerType()))
         .withColumn(
             "seniority_months",
-            F.when(F.col("seniority_months") < 0, 0)
-            .otherwise(F.coalesce(F.col("seniority_months"), F.lit(0)))
+            F.when(F.col("seniority_months") < 0, 0).otherwise(
+                F.coalesce(F.col("seniority_months"), F.lit(0))
+            ),
         )
-        .withColumn("customer_type_month_start", F.regexp_replace(F.col("customer_type_month_start"), "\\.0$", ""))
-        .withColumn("customer_type_month_start", F.coalesce(F.col("customer_type_month_start"), F.lit("UNKNOWN")))
-        .withColumn("relation_type_month_start", F.coalesce(F.col("relation_type_month_start"), F.lit("I")))
-        .withColumn("customer_segment", F.coalesce(F.col("customer_segment"), F.lit("UNKNOWN")))
+        .withColumn(
+            "customer_type_month_start",
+            F.regexp_replace(F.col("customer_type_month_start"), "\\.0$", ""),
+        )
+        .withColumn(
+            "customer_type_month_start",
+            F.coalesce(F.col("customer_type_month_start"), F.lit("UNKNOWN")),
+        )
+        .withColumn(
+            "relation_type_month_start",
+            F.coalesce(F.col("relation_type_month_start"), F.lit("I")),
+        )
+        .withColumn(
+            "customer_segment", F.coalesce(F.col("customer_segment"), F.lit("UNKNOWN"))
+        )
         .withColumn("employee_index", F.coalesce(F.col("employee_index"), F.lit("N")))
     )
 
     # Convert Spanish S/N character flags to 1/0 binary indicators
-    binary_sn_cols = ["residence_status", "is_foreigner", "is_deceased", "spouse_employee_index"]
+    binary_sn_cols = [
+        "residence_status",
+        "is_foreigner",
+        "is_deceased",
+        "spouse_employee_index",
+    ]
     for c in binary_sn_cols:
         df = df.withColumn(
-            c,
-            F.when(F.upper(F.col(c)) == "S", 1).otherwise(0).cast(ByteType())
+            c, F.when(F.upper(F.col(c)) == "S", 1).otherwise(0).cast(ByteType())
         )
 
     # Integer flags with default 0 fallback
@@ -156,24 +176,38 @@ def clean_pipeline(df):
         df = df.withColumn(c, F.coalesce(F.col(c).cast(IntegerType()), F.lit(0)))
 
     # Household income casting & province-partitioned median imputation
-    df = df.withColumn("gross_household_income", F.col("gross_household_income").cast(DoubleType()))
+    df = df.withColumn(
+        "gross_household_income", F.col("gross_household_income").cast(DoubleType())
+    )
     province_window = Window.partitionBy("province_code")
     global_window = Window.partitionBy()
 
     df = (
-        df
-        .withColumn("province_median_income", F.median("gross_household_income").over(province_window))
-        .withColumn("global_median_income", F.median("gross_household_income").over(global_window))
+        df.withColumn(
+            "province_median_income",
+            F.median("gross_household_income").over(province_window),
+        )
+        .withColumn(
+            "global_median_income",
+            F.median("gross_household_income").over(global_window),
+        )
         .withColumn(
             "gross_household_income",
-            F.coalesce(F.col("gross_household_income"), F.col("province_median_income"), F.col("global_median_income"))
+            F.coalesce(
+                F.col("gross_household_income"),
+                F.col("province_median_income"),
+                F.col("global_median_income"),
+            ),
         )
         .drop("province_median_income", "global_median_income")
     )
 
     # Clean 24 financial target products to binary ByteType (0 or 1)
     for target in ALL_24_PRODUCTS:
-        df = df.withColumn(target, F.coalesce(F.col(target).cast(IntegerType()), F.lit(0)).cast(ByteType()))
+        df = df.withColumn(
+            target,
+            F.coalesce(F.col(target).cast(IntegerType()), F.lit(0)).cast(ByteType()),
+        )
 
     # Filter out entries with invalid account start dates
     df = df.filter(F.col("join_date").isNotNull())
@@ -199,15 +233,19 @@ def extract_test_targets(df_test, df_train_apr):
         lag_col = F.coalesce(F.lag(col_name, 1).over(cust_window), F.lit(0))
         df_eval = df_eval.withColumn(
             f"added_{col_name}",
-            F.when((F.col(col_name) == 1) & (lag_col == 0), 1).otherwise(0).cast(ByteType())
+            F.when((F.col(col_name) == 1) & (lag_col == 0), 1)
+            .otherwise(0)
+            .cast(ByteType()),
         )
         df_eval = df_eval.withColumn(
             f"added_class_{col_name}",
-            F.when(F.col(f"added_{col_name}") == 1, F.lit(TARGET_TO_INDEX[col_name])).otherwise(None)
+            F.when(
+                F.col(f"added_{col_name}") == 1, F.lit(TARGET_TO_INDEX[col_name])
+            ).otherwise(None),
         )
         df_eval = df_eval.withColumn(
             f"added_name_{col_name}",
-            F.when(F.col(f"added_{col_name}") == 1, F.lit(col_name)).otherwise(None)
+            F.when(F.col(f"added_{col_name}") == 1, F.lit(col_name)).otherwise(None),
         )
 
     df_test_targets = df_eval.filter(F.col("snapshot_date") == "2016-05-28")
@@ -217,14 +255,26 @@ def extract_test_targets(df_test, df_train_apr):
     added_binary_cols = [f"added_{c}" for c in SELECTED_15_TARGETS]
 
     return (
-        df_test_targets
-        .withColumn("target_classes", F.array_compact(F.array(*added_classes)))
+        df_test_targets.withColumn(
+            "target_classes", F.array_compact(F.array(*added_classes))
+        )
         .withColumn("added_products", F.array_compact(F.array(*added_names)))
         .withColumn(
             "target_class",
-            F.when(F.size("target_classes") == 0, 0).otherwise(F.col("target_classes")[0]).cast(IntegerType())
+            F.when(F.size("target_classes") == 0, 0)
+            .otherwise(F.col("target_classes")[0])
+            .cast(IntegerType()),
         )
-        .select(["customer_id", "snapshot_date", "target_class", "target_classes", "added_products"] + added_binary_cols)
+        .select(
+            [
+                "customer_id",
+                "snapshot_date",
+                "target_class",
+                "target_classes",
+                "added_products",
+            ]
+            + added_binary_cols
+        )
     )
 
 
@@ -236,18 +286,21 @@ def cap_categories_for_tabdpt(df, top_channels=None, top_countries=None):
     - province_code: Coalesced with 'UNKNOWN' (<= 53 unique Spanish province codes)
     """
     return (
-        df
-        .withColumn(
+        df.withColumn(
             "entry_channel",
-            F.when(F.col("entry_channel").isin(top_channels), F.col("entry_channel")).otherwise("OTHER")
+            F.when(
+                F.col("entry_channel").isin(top_channels), F.col("entry_channel")
+            ).otherwise("OTHER"),
         )
         .withColumn(
             "residence_country",
-            F.when(F.col("residence_country").isin(top_countries), F.col("residence_country")).otherwise("OTHER")
+            F.when(
+                F.col("residence_country").isin(top_countries),
+                F.col("residence_country"),
+            ).otherwise("OTHER"),
         )
         .withColumn(
-            "province_code",
-            F.coalesce(F.col("province_code"), F.lit("UNKNOWN"))
+            "province_code", F.coalesce(F.col("province_code"), F.lit("UNKNOWN"))
         )
     )
 
@@ -268,23 +321,31 @@ def engineer_tabdpt_features(df, explode_multi_targets: bool = True):
     7. Socioeconomic ratios: log_income, income_to_province_ratio, months_as_customer, age_at_join.
     8. Seasonality & calendar drivers: sin_month, cos_month, seasonal indicator dummies.
     """
-    print("[Stage 1] Engineering lag features, portfolio bundles, and 16-class target...")
+    print(
+        "[Stage 1] Engineering lag features, portfolio bundles, and 16-class target..."
+    )
     cust_window = Window.partitionBy("customer_id").orderBy("snapshot_date")
 
     # 1. Target Construction & 15 Target Holdings at lag 1
     for col_name in SELECTED_15_TARGETS:
-        df = df.withColumn(f"has_{col_name}_lag1", F.coalesce(F.lag(col_name, 1).over(cust_window), F.lit(0)).cast(ByteType()))
+        df = df.withColumn(
+            f"has_{col_name}_lag1",
+            F.coalesce(F.lag(col_name, 1).over(cust_window), F.lit(0)).cast(ByteType()),
+        )
         df = df.withColumn(
             f"added_{col_name}",
             F.when(
                 (F.col(col_name) == 1) & (F.col(f"has_{col_name}_lag1") == 0),
-                F.lit(TARGET_TO_INDEX[col_name])
-            ).otherwise(None)
+                F.lit(TARGET_TO_INDEX[col_name]),
+            ).otherwise(None),
         )
 
     # 2. Holdings at lag 1 for the other 9 ecosystem products
     for col_name in OTHER_9_PRODUCTS:
-        df = df.withColumn(f"has_{col_name}_lag1", F.coalesce(F.lag(col_name, 1).over(cust_window), F.lit(0)).cast(ByteType()))
+        df = df.withColumn(
+            f"has_{col_name}_lag1",
+            F.coalesce(F.lag(col_name, 1).over(cust_window), F.lit(0)).cast(ByteType()),
+        )
 
     # 3. 16-Class Target Construction (0 = do_nothing, 1..15 = product added)
     added_cols = [f"added_{c}" for c in SELECTED_15_TARGETS]
@@ -293,26 +354,35 @@ def engineer_tabdpt_features(df, explode_multi_targets: bool = True):
     if explode_multi_targets:
         df = df.withColumn(
             "target_class",
-            F.when(F.size("added_classes") == 0, F.array(F.lit(0))).otherwise(F.col("added_classes"))
+            F.when(F.size("added_classes") == 0, F.array(F.lit(0))).otherwise(
+                F.col("added_classes")
+            ),
         )
         df = df.withColumn("target_class", F.explode("target_class"))
         df = df.withColumn("target_class", F.col("target_class").cast(IntegerType()))
     else:
         df = df.withColumn(
             "target_class",
-            F.when(F.size("added_classes") == 0, 0).otherwise(F.col("added_classes")[0]).cast(IntegerType())
+            F.when(F.size("added_classes") == 0, 0)
+            .otherwise(F.col("added_classes")[0])
+            .cast(IntegerType()),
         )
 
     df = df.drop("added_classes", *added_cols)
 
     # 4. Core holdings at lag 2 and velocity deltas (lag1 - lag2)
     for col_name in CORE_10_PRODUCTS:
-        df = df.withColumn(f"has_{col_name}_lag2", F.coalesce(F.lag(col_name, 2).over(cust_window), F.lit(0)).cast(ByteType()))
+        df = df.withColumn(
+            f"has_{col_name}_lag2",
+            F.coalesce(F.lag(col_name, 2).over(cust_window), F.lit(0)).cast(ByteType()),
+        )
 
     for col_name in CORE_7_PRODUCTS:
         df = df.withColumn(
             f"delta_{col_name}",
-            (F.col(f"has_{col_name}_lag1") - F.col(f"has_{col_name}_lag2")).cast(IntegerType())
+            (F.col(f"has_{col_name}_lag1") - F.col(f"has_{col_name}_lag2")).cast(
+                IntegerType()
+            ),
         )
 
     # 5. Portfolio aggregations & composite bundle indices
@@ -321,78 +391,163 @@ def engineer_tabdpt_features(df, explode_multi_targets: bool = True):
 
     df = df.withColumn("total_products_lag1", sum(all_24_lag1).cast(IntegerType()))
     df = df.withColumn("total_products_lag2", sum(core_10_lag2).cast(IntegerType()))
-    df = df.withColumn("delta_total_products", (F.col("total_products_lag1") - F.col("total_products_lag2")).cast(IntegerType()))
-    df = df.withColumn("has_any_product_lag1", F.when(F.col("total_products_lag1") > 0, 1).otherwise(0).cast(ByteType()))
+    df = df.withColumn(
+        "delta_total_products",
+        (F.col("total_products_lag1") - F.col("total_products_lag2")).cast(
+            IntegerType()
+        ),
+    )
+    df = df.withColumn(
+        "has_any_product_lag1",
+        F.when(F.col("total_products_lag1") > 0, 1).otherwise(0).cast(ByteType()),
+    )
 
     # Product bundle usage indices
     df = df.withColumn(
         "payroll_bundle_lag1",
-        (F.col("has_payroll_lag1") + F.col("has_payroll_account_lag1") + F.col("has_direct_debit_lag1")) / 3.0
+        (
+            F.col("has_payroll_lag1")
+            + F.col("has_payroll_account_lag1")
+            + F.col("has_direct_debit_lag1")
+        )
+        / 3.0,
     )
     df = df.withColumn(
         "investment_bundle_lag1",
-        (F.col("has_funds_lag1") + F.col("has_securities_lag1") + F.col("has_pensions_plan_lag1")) / 3.0
+        (
+            F.col("has_funds_lag1")
+            + F.col("has_securities_lag1")
+            + F.col("has_pensions_plan_lag1")
+        )
+        / 3.0,
     )
     df = df.withColumn(
         "credit_bundle_lag1",
-        (F.col("has_credit_card_lag1") + F.col("has_loans_lag1") + F.col("has_mortgage_lag1")) / 3.0
+        (
+            F.col("has_credit_card_lag1")
+            + F.col("has_loans_lag1")
+            + F.col("has_mortgage_lag1")
+        )
+        / 3.0,
     )
     df = df.withColumn(
         "savings_bundle_lag1",
-        (F.col("has_particular_account_lag1") + F.col("has_particular_plus_account_lag1") + F.col("has_more_particular_account_lag1")) / 3.0
+        (
+            F.col("has_particular_account_lag1")
+            + F.col("has_particular_plus_account_lag1")
+            + F.col("has_more_particular_account_lag1")
+        )
+        / 3.0,
     )
 
     # Payroll & pensions reactivation indicators (holds payroll account but received no payroll/pension in lag 1)
     df = df.withColumn(
         "payroll_eligible",
-        F.when((F.col("has_payroll_account_lag1") == 1) & (F.col("has_payroll_lag1") == 0), 1).otherwise(0).cast(ByteType())
+        F.when(
+            (F.col("has_payroll_account_lag1") == 1) & (F.col("has_payroll_lag1") == 0),
+            1,
+        )
+        .otherwise(0)
+        .cast(ByteType()),
     )
     df = df.withColumn(
         "pensions_eligible",
-        F.when((F.col("has_payroll_account_lag1") == 1) & (F.col("has_pensions_lag1") == 0), 1).otherwise(0).cast(ByteType())
+        F.when(
+            (F.col("has_payroll_account_lag1") == 1)
+            & (F.col("has_pensions_lag1") == 0),
+            1,
+        )
+        .otherwise(0)
+        .cast(ByteType()),
     )
 
     # Customer activity dynamics (separates active purchasers from dormant customers)
-    df = df.withColumn("is_active_lag1", F.coalesce(F.lag("is_active", 1).over(cust_window), F.lit(0)).cast(IntegerType()))
-    df = df.withColumn("is_active_lag2", F.coalesce(F.lag("is_active", 2).over(cust_window), F.lit(0)).cast(IntegerType()))
-    df = df.withColumn("activity_delta", (F.col("is_active_lag1") - F.col("is_active_lag2")).cast(IntegerType()))
+    df = df.withColumn(
+        "is_active_lag1",
+        F.coalesce(F.lag("is_active", 1).over(cust_window), F.lit(0)).cast(
+            IntegerType()
+        ),
+    )
+    df = df.withColumn(
+        "is_active_lag2",
+        F.coalesce(F.lag("is_active", 2).over(cust_window), F.lit(0)).cast(
+            IntegerType()
+        ),
+    )
+    df = df.withColumn(
+        "activity_delta",
+        (F.col("is_active_lag1") - F.col("is_active_lag2")).cast(IntegerType()),
+    )
 
     # 6. Socioeconomic Context & Ratios
     prov_window = Window.partitionBy("province_code")
-    df = df.withColumn("prov_med_inc", F.median("gross_household_income").over(prov_window))
+    df = df.withColumn(
+        "prov_med_inc", F.median("gross_household_income").over(prov_window)
+    )
     df = (
-        df
-        .withColumn("log_income", F.log1p("gross_household_income"))
+        df.withColumn("log_income", F.log1p("gross_household_income"))
         .withColumn(
             "income_to_province_ratio",
-            F.when(F.col("prov_med_inc") > 0, F.col("gross_household_income") / F.col("prov_med_inc")).otherwise(1.0)
+            F.when(
+                F.col("prov_med_inc") > 0,
+                F.col("gross_household_income") / F.col("prov_med_inc"),
+            ).otherwise(1.0),
         )
-        .withColumn("months_as_customer", F.round(F.months_between("snapshot_date", "join_date"), 1))
-        .withColumn("age_at_join", F.round(F.col("age") - (F.col("seniority_months") / 12.0), 1))
+        .withColumn(
+            "months_as_customer",
+            F.round(F.months_between("snapshot_date", "join_date"), 1),
+        )
+        .withColumn(
+            "age_at_join", F.round(F.col("age") - (F.col("seniority_months") / 12.0), 1)
+        )
         .drop("prov_med_inc")
     )
 
     # 7. Seasonality & Calendar Drivers
     df = (
-        df
-        .withColumn("snap_month", F.month("snapshot_date").cast(IntegerType()))
-        .withColumn("sin_month", F.round(F.sin(2 * math.pi * F.col("snap_month") / 12.0), 4))
-        .withColumn("cos_month", F.round(F.cos(2 * math.pi * F.col("snap_month") / 12.0), 4))
-        .withColumn("is_tax_season", F.when(F.col("snap_month").isin(4, 5, 6), 1).otherwise(0).cast(ByteType()))
-        .withColumn("is_pension_season", F.when(F.col("snap_month").isin(11, 12), 1).otherwise(0).cast(ByteType()))
-        .withColumn("is_academic_season", F.when(F.col("snap_month").isin(9, 10), 1).otherwise(0).cast(ByteType()))
-        .withColumn("is_summer_season", F.when(F.col("snap_month").isin(6, 7), 1).otherwise(0).cast(ByteType()))
+        df.withColumn("snap_month", F.month("snapshot_date").cast(IntegerType()))
+        .withColumn(
+            "sin_month", F.round(F.sin(2 * math.pi * F.col("snap_month") / 12.0), 4)
+        )
+        .withColumn(
+            "cos_month", F.round(F.cos(2 * math.pi * F.col("snap_month") / 12.0), 4)
+        )
+        .withColumn(
+            "is_tax_season",
+            F.when(F.col("snap_month").isin(4, 5, 6), 1).otherwise(0).cast(ByteType()),
+        )
+        .withColumn(
+            "is_pension_season",
+            F.when(F.col("snap_month").isin(11, 12), 1).otherwise(0).cast(ByteType()),
+        )
+        .withColumn(
+            "is_academic_season",
+            F.when(F.col("snap_month").isin(9, 10), 1).otherwise(0).cast(ByteType()),
+        )
+        .withColumn(
+            "is_summer_season",
+            F.when(F.col("snap_month").isin(6, 7), 1).otherwise(0).cast(ByteType()),
+        )
     )
 
     # Filter out customer's first snapshot month where lag 1 features do not exist
-    df = df.withColumn("prev_snapshot_date", F.lag("snapshot_date", 1).over(cust_window))
+    df = df.withColumn(
+        "prev_snapshot_date", F.lag("snapshot_date", 1).over(cust_window)
+    )
     df = df.filter(F.col("prev_snapshot_date").isNotNull()).drop("prev_snapshot_date")
 
     # Drop raw target products at time t to prevent target leakage
     df = df.drop(*ALL_24_PRODUCTS)
 
     # Drop non-feature identification columns
-    df = df.drop("join_date", "last_date_primary_customer", "address_type", "province_name", "is_active", "gross_household_income")
+    df = df.drop(
+        "join_date",
+        "last_date_primary_customer",
+        "address_type",
+        "province_name",
+        "is_active",
+        "gross_household_income",
+    )
 
     return df
 
@@ -416,35 +571,53 @@ def run_stage1(spark: SparkSession = None):
     try:
         # Load or read cleaned Parquet if already generated
         if CLEAN_TRAIN_PARQUET.exists():
-            print(f"[Stage 1] Pre-cleaned training dataset found at: {CLEAN_TRAIN_PARQUET}")
+            print(
+                f"[Stage 1] Pre-cleaned training dataset found at: {CLEAN_TRAIN_PARQUET}"
+            )
             df_train = spark.read.parquet(str(CLEAN_TRAIN_PARQUET))
         else:
             df_raw = load_raw_data(spark)
             df_clean = clean_pipeline(df_raw)
 
-            print("[Stage 1] Splitting dataset: Training (< 2016-05-28) and Test Evaluation (2016-05-28)...")
+            print(
+                "[Stage 1] Splitting dataset: Training (< 2016-05-28) and Test Evaluation (2016-05-28)..."
+            )
             df_test_may2016 = df_clean.filter(F.col("snapshot_date") == "2016-05-28")
             df_train = df_clean.filter(F.col("snapshot_date") < "2016-05-28")
 
-            print(f"[Stage 1] Writing cleaned evaluation test set to: {CLEAN_TEST_PARQUET}")
-            df_test_may2016.write.parquet(str(WRITE_CLEAN_TEST_PARQUET), mode="overwrite")
+            print(
+                f"[Stage 1] Writing cleaned evaluation test set to: {CLEAN_TEST_PARQUET}"
+            )
+            df_test_may2016.write.parquet(
+                str(WRITE_CLEAN_TEST_PARQUET), mode="overwrite"
+            )
 
             print(f"[Stage 1] Writing cleaned train set to: {CLEAN_TRAIN_PARQUET}")
             df_train.write.parquet(str(WRITE_CLEAN_TRAIN_PARQUET), mode="overwrite")
 
         # Ensure ground-truth test targets are computed and saved separately
         test_targets_dir = str(TEST_TARGETS_PARQUET.parent)
-        if not (Path(test_targets_dir).exists() and any(Path(test_targets_dir).glob("*.parquet"))):
-            print(f"[Stage 1] Extracting and saving isolated test targets to: {test_targets_dir}...")
+        if not (
+            Path(test_targets_dir).exists()
+            and any(Path(test_targets_dir).glob("*.parquet"))
+        ):
+            print(
+                f"[Stage 1] Extracting and saving isolated test targets to: {test_targets_dir}..."
+            )
             if "df_test_may2016" not in locals():
                 df_test_may2016 = spark.read.parquet(str(CLEAN_TEST_PARQUET))
             df_apr = df_train.filter(F.col("snapshot_date") == "2016-04-28")
             df_test_targets = extract_test_targets(df_test_may2016, df_apr)
-            df_test_targets.write.parquet(str(WRITE_TEST_TARGETS_PARQUET), mode="overwrite")
+            df_test_targets.write.parquet(
+                str(WRITE_TEST_TARGETS_PARQUET), mode="overwrite"
+            )
 
-        print("[Stage 1] Computing top channels and countries from training partition...")
+        print(
+            "[Stage 1] Computing top channels and countries from training partition..."
+        )
         top_channels = [
-            row["entry_channel"] for row in df_train.filter(F.col("entry_channel").isNotNull())
+            row["entry_channel"]
+            for row in df_train.filter(F.col("entry_channel").isNotNull())
             .groupBy("entry_channel")
             .count()
             .orderBy(F.desc("count"))
@@ -452,7 +625,8 @@ def run_stage1(spark: SparkSession = None):
             .collect()
         ]
         top_countries = [
-            row["residence_country"] for row in df_train.filter(F.col("residence_country").isNotNull())
+            row["residence_country"]
+            for row in df_train.filter(F.col("residence_country").isNotNull())
             .groupBy("residence_country")
             .count()
             .orderBy(F.desc("count"))
@@ -460,11 +634,17 @@ def run_stage1(spark: SparkSession = None):
             .collect()
         ]
 
-        df_train_capped = cap_categories_for_tabdpt(df_train, top_channels, top_countries)
-        df_features = engineer_tabdpt_features(df_train_capped, explode_multi_targets=True)
+        df_train_capped = cap_categories_for_tabdpt(
+            df_train, top_channels, top_countries
+        )
+        df_features = engineer_tabdpt_features(
+            df_train_capped, explode_multi_targets=True
+        )
 
         feature_cols = [c for c in df_features.columns if c not in NON_FEATURE_COLS]
-        print(f"[Stage 1] Total Feature Columns: {len(feature_cols)} (Limit <= 100: {len(feature_cols) <= 100})")
+        print(
+            f"[Stage 1] Total Feature Columns: {len(feature_cols)} (Limit <= 100: {len(feature_cols) <= 100})"
+        )
 
         print(f"[Stage 1] Saving engineered features to: {FEATURES_PARQUET}")
         df_features.write.parquet(str(WRITE_FEATURES_PARQUET), mode="overwrite")
