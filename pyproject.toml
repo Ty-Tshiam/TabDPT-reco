@@ -1,2 +1,7 @@
 [tool.ruff]
 extend-exclude = ["src/TabDPT-inference"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src/TabDPT-inference/src"]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py", "test.py"]

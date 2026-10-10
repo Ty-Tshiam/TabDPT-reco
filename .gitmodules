@@ -1,3 +1,0 @@
-[submodule "src/TabDPT-inference"]
-	path = src/TabDPT-inference
-	url = https://github.com/layer6ai-labs/TabDPT-inference.git

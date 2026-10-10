@@ -18,8 +18,6 @@ jobs:
         steps:
         - name: Checkout code 
           uses: actions/checkout@v4
-          with:
-            submodules: recursive
 
         - name: Set up Python ${{ matrix.python-version }}
           uses: actions/setup-python@v5
@@ -38,11 +36,10 @@ jobs:
             ruff check .
             ruff format --check .
         
-        - name: Debug tabdpt
+        - name: Verify tabdpt installation
           run: |
-            ls src/TabDPT-inference/src || echo "submodule missing"
-            PYTHONPATH=src/TabDPT-inference/src python -c "import tabdpt; print(tabdpt.__file__)"
-            pip list | grep -i tabdpt
+            python -c "import tabdpt.model as m; assert hasattr(m.TabDPTModel, 'encode_context'), 'encode_context missing!'"
+
                   
         - name: Test with pytest
           run: |

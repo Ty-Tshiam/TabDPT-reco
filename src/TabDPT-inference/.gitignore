@@ -1,0 +1,6 @@
+__pycache__/
+tabdpt.egg-info/
+.cache
+uv.lock
+.venv/
+eval_output/
