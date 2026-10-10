@@ -37,7 +37,7 @@ def test_triton_grpc_inference(retries: int = 5, retry_delay: float = 2.0):
             if client.is_server_live():
                 server_live = True
                 break
-        except Exception:
+        except Exception: # noqa: BLE001
             if attempt < retries - 1:
                 time.sleep(retry_delay)
     assert server_live, "Triton Server is not live"

@@ -438,33 +438,30 @@ def check_triton_status():
     """Checks if Triton gRPC server is responding."""
     if not TRITON_CLIENT_AVAILABLE:
         return False, "tritonclient not installed"
-    try:
-        client = grpcclient.InferenceServerClient(url=TRITON_GRPC_URL)
-        if client.is_server_live() and client.is_model_ready("tabdpt"):
-            return True, "Online & Ready (tabdpt v3)"
-        return False, "Server reachable, model not ready"
-    except Exception as e:
-        return False, f"Offline ({e.__class__.__name__})"
+    
+    client = grpcclient.InferenceServerClient(url=TRITON_GRPC_URL)
+    if client.is_server_live() and client.is_model_ready("tabdpt"):
+        return True, "Online & Ready (tabdpt v3)"
+    return False, "Server reachable, model not ready"
+    
 
 @st.cache_data(show_spinner=False)
 def load_customer_dossier(customer_id: str):
     """Loads customer snapshot and current holdings from test dataset."""
-    try:
-        test_df = pl.scan_parquet(str(CLEAN_TEST_PARQUET)).filter(pl.col("customer_id") == customer_id).collect()
-        if test_df.is_empty():
-            return None
-        row = test_df.to_dicts()[0]
-
-        held = []
-        for p in SELECTED_15_TARGETS:
-            if row.get(p, 0) == 1:
-                held.append(p)
-        return {
-            "row": row,
-            "held_products": held
-        }
-    except Exception:
+    
+    test_df = pl.scan_parquet(str(CLEAN_TEST_PARQUET)).filter(pl.col("customer_id") == customer_id).collect()
+    if test_df.is_empty():
         return None
+    row = test_df.to_dicts()[0]
+
+    held = []
+    for p in SELECTED_15_TARGETS:
+        if row.get(p, 0) == 1:
+            held.append(p)
+    return {
+        "row": row,
+        "held_products": held
+    }
 
 @st.cache_data(show_spinner=False)
 def get_cached_customer_features(customer_id: str):
@@ -537,46 +534,43 @@ def execute_pipeline_for_event(customer_id: str, action: str):
     2. Evaluates Action-Intent Relevance Matrix (relevant -> active vs no action).
     3. Publishes event to STREAM_RECOMMENDATIONS and updates KEY_CUSTOMER_RECS.
     """
-    try:
-        from src.streaming.event_processor import product_relavance
+    from src.streaming.event_processor import product_relavance
 
-        start_time = time.time()
-        infer_data = run_customer_model_inference(customer_id)
-        
-        recos = infer_data["recos"]
-        top_product = infer_data["top_product"]
-        prob_dict = infer_data["prob_dict"]
-        triton_ms = infer_data["triton_ms"]
+    start_time = time.time()
+    infer_data = run_customer_model_inference(customer_id)
+    
+    recos = infer_data["recos"]
+    top_product = infer_data["top_product"]
+    prob_dict = infer_data["prob_dict"]
+    triton_ms = infer_data["triton_ms"]
 
-        relevant = product_relavance(top_product, action)
-        gateway_latency = (time.time() - start_time) * 1000
+    relevant = product_relavance(top_product, action)
+    gateway_latency = (time.time() - start_time) * 1000
 
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-        stream_payload = {
-            "customer_id": str(customer_id),
-            "action": str(action),
-            "top_product": str(top_product),
-            "recommendations": json.dumps(recos),
-            "is_active_trigger": "true" if relevant else "false",
-            "latency_ms": f"{gateway_latency:.2f}",
-            "triton_ms": f"{triton_ms:.2f}",
-            "timestamp": now_iso,
-            "probabilities": json.dumps(prob_dict)
-        }
+    stream_payload = {
+        "customer_id": str(customer_id),
+        "action": str(action),
+        "top_product": str(top_product),
+        "recommendations": json.dumps(recos),
+        "is_active_trigger": "true" if relevant else "false",
+        "latency_ms": f"{gateway_latency:.2f}",
+        "triton_ms": f"{triton_ms:.2f}",
+        "timestamp": now_iso,
+        "probabilities": json.dumps(prob_dict)
+    }
 
-        # 1. Push to stream:recommendations
-        r = get_redis()
-        r.xadd(STREAM_RECOMMENDATIONS, stream_payload)
+    # 1. Push to stream:recommendations
+    r = get_redis()
+    r.xadd(STREAM_RECOMMENDATIONS, stream_payload)
 
-        # 2. Update recs:{customer_id} cache
-        cache_key = f"recs:{customer_id}"
-        r.set(cache_key, json.dumps(stream_payload), ex=RECS_TTL_SECONDS)
+    # 2. Update recs:{customer_id} cache
+    cache_key = f"recs:{customer_id}"
+    r.set(cache_key, json.dumps(stream_payload), ex=RECS_TTL_SECONDS)
 
-        return stream_payload, None
+    return stream_payload, None
 
-    except Exception as e:
-        return None, str(e)
 
 
 # -----------------------------------------------------------------------------
@@ -1014,10 +1008,11 @@ with tab_stream:
             st.rerun()
 
     # Read latest messages from stream:recommendations
-    try:
-        recs_events = r_client.xrevrange(STREAM_RECOMMENDATIONS, count=25)
-    except Exception:
+    recs_events = r_client.xrevrange(STREAM_RECOMMENDATIONS, count=25)
+    if not recs_events:
         recs_events = []
+        
+
 
     if recs_events:
         stream_table = []

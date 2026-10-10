@@ -53,17 +53,11 @@ def return_tensors():
 
 
 def save_model():
-    try:
-        weights_path = hf_hub_download(
-            repo_id=repo_id, filename="tabdpt1_3.safetensors", local_files_only=False
-        )
-        weight_file = "tabdpt1_3.safetensors"
-    except Exception:
-        print("No 1.3 using 1.2")
-        weights_path = hf_hub_download(
-            repo_id=repo_id, filename="tabdpt1_2.safetensors", local_files_only=False
-        )
-        weight_file = "tabdpt1_2.safetensors"
+    weight_file = "tabdpt1_3.safetensors"
+    weights_path = hf_hub_download(
+        repo_id=repo_id, filename=weight_file, local_files_only=False
+    )
+    
 
     print(f"[Model] Downloading HuggingFace weights {weight_file} from {weights_path}")
     print(f"[Model] Loading Model on {device} with {dtype}")
@@ -73,12 +67,9 @@ def save_model():
 
     rebuild = "--force" in sys.argv
     if os.path.exists(KV_CACHE) and not rebuild:
-        try:
-            cached = torch.load(str(KV_CACHE), map_location="cpu")
-            if not isinstance(cached, tuple) or len(cached) != 3 or not isinstance(cached[2], dict):
-                print("[Model] Existing cache format is outdated, re-encoding...")
-                rebuild = True
-        except Exception:
+        cached = torch.load(str(KV_CACHE), map_location="cpu")
+        if not isinstance(cached, tuple) or len(cached) != 3 or not isinstance(cached[2], dict):
+            print("[Model] Existing cache format is outdated, re-encoding...")
             rebuild = True
 
     if os.path.exists(KV_CACHE) and not rebuild:
@@ -87,14 +78,12 @@ def save_model():
         print("[Model] Encoding context (will cache to disk)...")
         y_ctx, x_ctx = return_tensors()
         with torch.no_grad():
-            try:
-                if torch.cuda.is_available() and hasattr(torch, "compile"):
-                    encode_fn = torch.compile(model.encode_context)
-                else:
-                    encode_fn = model.encode_context
-            except Exception:
+            if torch.cuda.is_available() and hasattr(torch, "compile"):
+                encode_fn = torch.compile(model.encode_context)
+            else:
                 encode_fn = model.encode_context
             kv_cache, n_ctx, stats = encode_fn(x_ctx, y_ctx, is_cls=True)
+
         torch.save((kv_cache, n_ctx, stats), str(KV_CACHE))
         print(f"[Model] Saved KV cache to {KV_CACHE}")
 

@@ -47,14 +47,11 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
         print(f"[TritonService] Loading KV-cache from {KV_CACHE}...")
         self.kv_cache, self.n_ctx, self.stats = torch.load(str(KV_CACHE), map_location=self.device)
 
-        try:
-            if torch.cuda.is_available() and hasattr(torch, "compile"):
-                print("[TritonService] Compiling predict_with_cache with torch.compile...")
-                self.predict_fn = torch.compile(self.model.predict_with_cache)
-            else:
-                self.predict_fn = self.model.predict_with_cache
-        except Exception as e:
-            print(f"[TritonService] Compilation note: {e}, using eager mode.")
+    
+        if torch.cuda.is_available() and hasattr(torch, "compile"):
+            print("[TritonService] Compiling predict_with_cache with torch.compile...")
+            self.predict_fn = torch.compile(self.model.predict_with_cache)
+        else:
             self.predict_fn = self.model.predict_with_cache
 
         print("[TritonService] Model successfully initialized and ready for gRPC inference!")
@@ -93,55 +90,50 @@ class TritonTabDPTService(pb2_grpc.GRPCInferenceServiceServicer):
         return response
 
     def ModelInfer(self, request, context):
-        try:
-            # 1. Locate input tensor
-            input_meta = None
-            input_idx = 0
-            for idx, inp in enumerate(request.inputs):
-                if inp.name == "QUERY_FEATURES":
-                    input_meta = inp
-                    input_idx = idx
-                    break
+        # 1. Locate input tensor
+        input_meta = None
+        input_idx = 0
+        for idx, inp in enumerate(request.inputs):
+            if inp.name == "QUERY_FEATURES":
+                input_meta = inp
+                input_idx = idx
+                break
 
-            if input_meta is None:
-                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Missing input: QUERY_FEATURES")
+        if input_meta is None:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Missing input: QUERY_FEATURES")
 
-            # 2. Extract raw bytes to NumPy array
-            shape = list(input_meta.shape)
-            raw_bytes = request.raw_input_contents[input_idx]
-            x_np = np.frombuffer(raw_bytes, dtype=np.float32).copy().reshape(shape)
+        # 2. Extract raw bytes to NumPy array
+        shape = list(input_meta.shape)
+        raw_bytes = request.raw_input_contents[input_idx]
+        x_np = np.frombuffer(raw_bytes, dtype=np.float32).copy().reshape(shape)
 
-            # 3. Convert to GPU tensor
-            x_gpu = torch.as_tensor(x_np, device=self.device, dtype=self.dtype)
+        # 3. Convert to GPU tensor
+        x_gpu = torch.as_tensor(x_np, device=self.device, dtype=self.dtype)
 
-            # 4. Predict using KV-cache
-            with torch.no_grad():
-                logits = self.predict_fn(x_gpu, self.kv_cache, self.n_ctx, self.stats)
-                if logits.ndim == 3 and logits.shape[0] == 1:
-                    logits = logits.squeeze(0)
-                logits_16 = logits[..., :16]
-                probs = F.softmax(logits_16.float(), dim=-1)
+        # 4. Predict using KV-cache
+        with torch.no_grad():
+            logits = self.predict_fn(x_gpu, self.kv_cache, self.n_ctx, self.stats)
+            if logits.ndim == 3 and logits.shape[0] == 1:
+                logits = logits.squeeze(0)
+            logits_16 = logits[..., :16]
+            probs = F.softmax(logits_16.float(), dim=-1)
 
-            probs_np = probs.cpu().numpy()  # shape: (1, 16)
+        probs_np = probs.cpu().numpy()  # shape: (1, 16)
 
-            # 5. Pack into Triton ModelInferResponse
-            response = pb2.ModelInferResponse(
-                model_name=request.model_name or "tabdpt",
-                model_version=request.model_version or "3",
-                outputs=[
-                    pb2.ModelInferResponse.InferOutputTensor(
-                        name="PROBABILITIES",
-                        datatype="FP32",
-                        shape=list(probs_np.shape),
-                    )
-                ],
-                raw_output_contents=[probs_np.tobytes()],
-            )
-            return response
-
-        except Exception as e:
-            print(f"[TritonService] Error during ModelInfer: {e}")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+        # 5. Pack into Triton ModelInferResponse
+        response = pb2.ModelInferResponse(
+            model_name=request.model_name or "tabdpt",
+            model_version=request.model_version or "3",
+            outputs=[
+                pb2.ModelInferResponse.InferOutputTensor(
+                    name="PROBABILITIES",
+                    datatype="FP32",
+                    shape=list(probs_np.shape),
+                )
+            ],
+            raw_output_contents=[probs_np.tobytes()],
+        )
+        return response
 
 
 def serve(port: int = 8001):

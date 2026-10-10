@@ -29,13 +29,9 @@ try:
         CORE_7_PRODUCTS,
         CORE_10_PRODUCTS,
         INDEX_TO_TARGET,
-        KV_CACHE,
-        MODEL_ARTIFACT,
         MODEL_CONFIG,
         NORMALIZATION_STATS_JSON,
-        OTHER_9_PRODUCTS,
         SELECTED_15_TARGETS,
-        TARGET_TO_INDEX,
         TEST_TARGETS_PARQUET,
         Y_TENSOR_PATH,
     )

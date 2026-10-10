@@ -48,12 +48,10 @@ class TritonPythonModel:
         self.kv_cache, self.n_ctx, self.stats = torch.load(str(KV_CACHE), map_location=self.device)
 
         # Optimize inference method with torch.compile if supported
-        try:
-            if torch.cuda.is_available() and hasattr(torch, "compile"):
-                self.predict_fn = torch.compile(self.model.predict_with_cache)
-            else:
-                self.predict_fn = self.model.predict_with_cache
-        except Exception:
+    
+        if torch.cuda.is_available() and hasattr(torch, "compile"):
+            self.predict_fn = torch.compile(self.model.predict_with_cache)
+        else:
             self.predict_fn = self.model.predict_with_cache
 
     def execute(self, requests):
