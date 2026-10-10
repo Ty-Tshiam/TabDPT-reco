@@ -120,7 +120,7 @@ def compute_global_normalization_stats(df: pl.LazyFrame, feature_columns: list) 
     return global_mean, global_std
 
 
-def run_stage2(input_parquet_path: str = None):
+def run_stage2(input_parquet_path: str | None = None):
     """
     Executes Stage 2 end-to-end:
     - Scans features Parquet.

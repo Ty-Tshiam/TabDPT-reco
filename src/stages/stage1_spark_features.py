@@ -68,7 +68,7 @@ def create_spark_session(app_name: str = "SantanderTabDPTPipeline", driver_memor
     )
 
 
-def load_raw_data(spark: SparkSession, train_csv_path: str = None):
+def load_raw_data(spark: SparkSession, train_csv_path: str | None = None):
     """
     Reads the raw Santander train CSV and renames columns from Spanish to English.
 

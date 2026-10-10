@@ -347,7 +347,7 @@ def format_predictions(probs, held):
     pred_class = probs.argmax().item()
     print(f'[Inference] Predicted Class: {pred_class} ({classes[pred_class]})')
 
-    vals, ind = torch.sort(probs, descending=True)
+    _vals, ind = torch.sort(probs, descending=True)
     print(f'[Inference] Sorted indices : {ind.tolist()}')
     sorted_probs = [classes[i] for i in ind.tolist()]
     recos = filter_valid_recommendations(sorted_probs, held, 7)

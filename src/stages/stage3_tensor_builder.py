@@ -185,7 +185,7 @@ def build_tensors(sample_df: pl.DataFrame, target_dimension: int = 128) -> tuple
     return context_tensor, y_tensor
 
 
-def run_stage3(input_parquet_path: str = None):
+def run_stage3(input_parquet_path: str | None = None):
     """
     Executes Stage 3 end-to-end:
     - Scans normalized dataset from Stage 2.
