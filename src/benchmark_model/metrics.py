@@ -15,12 +15,12 @@ import numpy as np
 def compute_ap_at_k(recommended: list[str], actual: list[str], k: int = 7) -> float:
     """
     Computes Average Precision at K for a single customer.
-    
+
     Args:
         recommended: List of recommended product names in descending rank order.
         actual: List of ground-truth product names added by customer.
         k: Ranking cutoff depth (e.g. 4 or 7).
-        
+
     Returns:
         AP@K float value in [0.0, 1.0].
     """
@@ -132,17 +132,15 @@ def compute_recall_and_hit_rate_at_k(
     return mean_recall, mean_hit_rate
 
 
-def compute_ece(
-    y_true: np.ndarray, y_probs: np.ndarray, n_bins: int = 10
-) -> float:
+def compute_ece(y_true: np.ndarray, y_probs: np.ndarray, n_bins: int = 10) -> float:
     """
     Computes Expected Calibration Error (ECE) for multi-class probability outputs.
-    
+
     Args:
         y_true: 1D NumPy array of ground truth class indices (0..15).
         y_probs: 2D NumPy array of predicted class probabilities (N, 16).
         n_bins: Number of confidence interval bins.
-        
+
     Returns:
         ECE float score in [0.0, 1.0].
     """
@@ -177,12 +175,12 @@ def compute_psi(
 ) -> float:
     """
     Computes Population Stability Index (PSI) between two discrete distributions.
-    
+
     Args:
         expected_dist: 1D array of expected/baseline probabilities across 16 classes.
         actual_dist: 1D array of actual/predicted probabilities across 16 classes.
         eps: Small smoothing constant to avoid log(0) or division by zero.
-        
+
     Returns:
         PSI float value. (PSI < 0.1: stable; 0.1-0.25: slight drift; > 0.25: significant drift).
     """
@@ -204,12 +202,12 @@ def compute_alert_distribution(
     """
     Computes distribution between Active Alerts (proactive product recommendations)
     and Silent Alerts (status quo / hold / class 0).
-    
+
     Args:
         predictions_or_probs: Either 1D array of predicted class indices, or 2D probability matrix.
         held_products: Optional list of held products.
         classes_map: Optional mapping from index to class name.
-        
+
     Returns:
         Dict containing:
         - active_alerts_pct: Percentage of instances with active recommendation

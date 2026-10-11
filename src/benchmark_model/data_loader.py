@@ -44,7 +44,7 @@ def get_feature_column_names() -> list[str]:
         lf = pl.scan_parquet(str(FEATURES_PARQUET))
         schema = lf.collect_schema()
         return [c for c in schema.names() if c not in NON_FEATURE_COLS]
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Fallback to standard 81 features if parquet is not directly accessible
         return [f"feat_{i}" for i in range(81)]
 
@@ -61,7 +61,7 @@ def get_normalization_stats() -> tuple[float, float]:
 def load_context_data() -> tuple[np.ndarray, np.ndarray]:
     """
     Load stratified context and target tensors (91,313 rows).
-    
+
     Returns:
         X: NumPy array of shape (91313, 128), float32.
         y: NumPy array of shape (91313,), int64.
@@ -88,13 +88,13 @@ def prepare_benchmark_datasets(
 ) -> tuple[np.ndarray, np.ndarray, BenchmarkCohort]:
     """
     Splits context data into train and test evaluation cohorts.
-    
+
     Args:
         train_ratio: Fraction of data reserved for training (default 0.8).
         eval_sample_size: Optional cap on test cohort size for fast benchmarking.
         purchasers_only_for_eval: If True, evaluates only instances with actual additions (y > 0).
         seed: Random seed for reproducibility.
-        
+
     Returns:
         (X_train, y_train, test_cohort)
     """
@@ -102,7 +102,7 @@ def prepare_benchmark_datasets(
     feature_names = get_feature_column_names()
     mean_val, std_val = get_normalization_stats()
 
-    num_samples = len(y_full)
+    # num_samples = len(y_full)
     rng = np.random.default_rng(seed)
 
     # Stratified shuffle split across the 16 classes
@@ -132,7 +132,9 @@ def prepare_benchmark_datasets(
         unique_classes = np.unique(y_full[test_indices])
         for c in unique_classes:
             c_test_idxs = test_indices[y_full[test_indices] == c]
-            quota = max(1, int(round(eval_sample_size * (len(c_test_idxs) / len(test_indices)))))
+            quota = max(
+                1, round(eval_sample_size * (len(c_test_idxs) / len(test_indices)))
+            )
             sub_test.extend(c_test_idxs[:quota])
         sub_test = list(dict.fromkeys(sub_test))
         if len(sub_test) < eval_sample_size:

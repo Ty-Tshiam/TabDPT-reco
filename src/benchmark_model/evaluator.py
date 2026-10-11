@@ -45,13 +45,13 @@ class BenchmarkEvaluator:
     ) -> list[dict[str, Any]]:
         """
         Train and evaluate all registered models on the benchmark cohort.
-        
+
         Args:
             X_train: Feature matrix for training.
             y_train: Target classes for training.
             cohort: BenchmarkCohort test evaluation cohort.
             latency_samples: Number of individual queries to profile for p99 latency.
-            
+
         Returns:
             List of result dictionaries per model.
         """
@@ -63,8 +63,12 @@ class BenchmarkEvaluator:
         is_cold = cohort.is_cold
         is_warm = ~is_cold
 
-        cold_actuals = [cohort.actual_products[i] for i in range(len(cohort.y)) if is_cold[i]]
-        warm_actuals = [cohort.actual_products[i] for i in range(len(cohort.y)) if is_warm[i]]
+        cold_actuals = [
+            cohort.actual_products[i] for i in range(len(cohort.y)) if is_cold[i]
+        ]
+        warm_actuals = [
+            cohort.actual_products[i] for i in range(len(cohort.y)) if is_warm[i]
+        ]
 
         for model in self.models:
             print(f"\n[Evaluator] >>> Evaluating {model.name} ({model.family})...")
@@ -85,7 +89,9 @@ class BenchmarkEvaluator:
             print(f"[Evaluator] Finished training {model.name} in {train_time:.2f}s")
 
             # 2. Profile Inference Latency (Single query simulation)
-            print(f"[Evaluator] Profiling per-query latency over {latency_samples} samples...")
+            print(
+                f"[Evaluator] Profiling per-query latency over {latency_samples} samples..."
+            )
             profiler = LatencyProfiler()
             # Warmup
             _ = model.predict_proba(X_te[:5])
@@ -106,7 +112,7 @@ class BenchmarkEvaluator:
             # 3. Predict Full Test Probabilities
             t_batch = time.time()
             y_probs = model.predict_proba(X_te)
-            batch_time = time.time() - t_batch
+            batch_time = time.time() - t_batch  # noqa: F841
             y_pred = np.argmax(y_probs, axis=1)
 
             # 4. Generate Top Recommendations

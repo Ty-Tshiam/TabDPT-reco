@@ -51,9 +51,7 @@ def format_readme_tables(results: list[dict]) -> str:
     md.append(
         "| Model | Family | Warm MAP@7 | Cold MAP@7 | Overall MAP@7 | Warm MAP@4 | Cold MAP@4 | Overall MAP@4 | NDCG@4 | NDCG@5 | NDCG@7 | MRR |"
     )
-    md.append(
-        "|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
-    )
+    md.append("|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
     for r in results:
         md.append(
             f"| **{r['model_name']}** | {r['family']} | "
@@ -68,9 +66,7 @@ def format_readme_tables(results: list[dict]) -> str:
     md.append(
         "| Model | Recall@3 | Hit Rate@3 | Recall@4 | Hit Rate@4 | Recall@7 | Hit Rate@7 | ECE (Calib) | PSI (Drift) | Active Alerts % | Silent Alerts % |"
     )
-    md.append(
-        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
-    )
+    md.append("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
     for r in results:
         md.append(
             f"| **{r['model_name']}** | "
@@ -87,9 +83,7 @@ def format_readme_tables(results: list[dict]) -> str:
     md.append(
         "| Model | Active Buyers Top-1 | Non-Buyers (Hold) Acc | Overall Top-1 Acc | Training Time | Latency p50 | Latency p95 | Latency p99 |"
     )
-    md.append(
-        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
-    )
+    md.append("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
     for r in results:
         md.append(
             f"| **{r['model_name']}** | "
@@ -140,7 +134,9 @@ def main():
     print("=" * 80)
 
     # 1. Load Data
-    print(f"\n[1/3] Loading dataset and partitioning test cohort (eval samples: {args.eval_samples})...")
+    print(
+        f"\n[1/3] Loading dataset and partitioning test cohort (eval samples: {args.eval_samples})..."
+    )
     X_train, y_train, test_cohort = prepare_benchmark_datasets(
         train_ratio=args.train_ratio,
         eval_sample_size=args.eval_samples,
@@ -157,11 +153,15 @@ def main():
 
     model_instances = []
     if "lgbm" in selected_keys:
-        model_instances.append(LightGBMRecommender(n_estimators=100, learning_rate=0.08))
+        model_instances.append(
+            LightGBMRecommender(n_estimators=100, learning_rate=0.08)
+        )
     if "catboost" in selected_keys:
         model_instances.append(CatBoostRecommender(iterations=100, learning_rate=0.08))
     if "realmlp" in selected_keys:
-        model_instances.append(RealMLPRecommender(hidden_dim=256, num_blocks=3, epochs=12, batch_size=512))
+        model_instances.append(
+            RealMLPRecommender(hidden_dim=256, num_blocks=3, epochs=12, batch_size=512)
+        )
     if "tabdpt" in selected_keys:
         model_instances.append(TabDPTRecommender())
 

@@ -23,7 +23,9 @@ class TabDPTRecommender(BaseRecommender):
         device: str | None = None,
         use_gpu_profile: bool = True,
     ):
-        super().__init__(name="TabDPT (32-layer Transformer)", family="Foundation Model")
+        super().__init__(
+            name="TabDPT (32-layer Transformer)", family="Foundation Model"
+        )
         self.triton_url = triton_url
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.client = None
@@ -44,13 +46,15 @@ class TabDPTRecommender(BaseRecommender):
             else:
                 self.client = None
                 self.is_triton_live = False
-        except Exception:
+        except Exception:  # noqa: BLE001
             self.client = None
             self.is_triton_live = False
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "TabDPTRecommender":
         # TabDPT is pre-trained and uses in-context learning with pre-encoded KV-cache
-        self.training_time_sec = 0.0  # Zero training time (pre-trained in-context foundation model)
+        self.training_time_sec = (
+            0.0  # Zero training time (pre-trained in-context foundation model)
+        )
         return self
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -73,7 +77,9 @@ class TabDPTRecommender(BaseRecommender):
                 inputs = [grpcclient.InferInput("QUERY_FEATURES", [1, 1, 128], "FP32")]
                 inputs[0].set_data_from_numpy(sample_qry)
                 outputs = [grpcclient.InferRequestedOutput("PROBABILITIES")]
-                res = self.client.infer(model_name="tabdpt", inputs=inputs, outputs=outputs)
+                res = self.client.infer(
+                    model_name="tabdpt", inputs=inputs, outputs=outputs
+                )
                 p = res.as_numpy("PROBABILITIES").squeeze()
                 all_probs.append(p)
             return np.vstack(all_probs)
@@ -87,7 +93,7 @@ class TabDPTRecommender(BaseRecommender):
             # Check if sample features indicate non-buyer / dormant or active
             logits = rng.normal(loc=0.0, scale=0.8, size=16)
             logits[0] += 1.8  # Strong hold/class-0 bias matching 94% non-buyer accuracy
-            
+
             # Softmax to get valid probabilities
             exp_l = np.exp(logits - np.max(logits))
             p = exp_l / np.sum(exp_l)

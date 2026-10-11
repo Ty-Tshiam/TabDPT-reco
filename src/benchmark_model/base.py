@@ -28,7 +28,7 @@ class BaseRecommender(ABC):
     def fit(self, X: np.ndarray, y: np.ndarray) -> "BaseRecommender":
         """
         Fit model on training features X and targets y (classes 0..15).
-        
+
         Args:
             X: 2D NumPy array of shape (N, num_features).
             y: 1D NumPy array of shape (N,) with integers 0..15.
@@ -38,10 +38,10 @@ class BaseRecommender(ABC):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """
         Compute predicted probabilities for each of the 16 classes.
-        
+
         Args:
             X: 2D NumPy array of shape (N, num_features).
-            
+
         Returns:
             2D NumPy array of shape (N, 16) with row sums close to 1.0.
         """
@@ -54,12 +54,12 @@ class BaseRecommender(ABC):
     ) -> list[list[str]]:
         """
         Rank candidate products excluding already-held products at lag 1.
-        
+
         Args:
             probs: 2D NumPy array of shape (N, 16) probabilities.
             held_products: List of lists of already-held product names per customer.
             top_k: Number of recommendations to produce per customer.
-            
+
         Returns:
             List of lists of top_k recommended product names.
         """
