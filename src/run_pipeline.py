@@ -25,7 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import ensure_directories_exist
-from src.stages.stage1_spark_features import run_stage1
+from src.stages.stage1_polars_features import run_stage1
 from src.stages.stage2_encode_normalize import run_stage2
 from src.stages.stage3_tensor_builder import run_stage3
 
@@ -37,7 +37,7 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Stages:
-  1: PySpark Data Cleaning & Feature Engineering (Raw CSV -> Parquet)
+  1: Polars Data Cleaning & Feature Engineering (Raw CSV -> Parquet)
   2: Categorical Frequency Encoding & Global Normalization (Features -> Normalized Parquet)
   3: Stratified Subsampling & PyTorch Tensor Export (Normalized Parquet -> context.pt, y.pt)
   all: Run Stages 1, 2, and 3 sequentially
@@ -63,7 +63,7 @@ def main():
     start_time = time.time()
 
     if args.stage in ("1", "all"):
-        print("\n>>> Launching Stage 1: PySpark Data Cleaning & Feature Engineering...")
+        print("\n>>> Launching Stage 1: Polars Data Cleaning & Feature Engineering...")
         t0 = time.time()
         run_stage1()
         print(f">>> Stage 1 Finished in {time.time() - t0:.1f}s")
