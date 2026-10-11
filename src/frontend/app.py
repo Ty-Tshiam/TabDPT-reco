@@ -185,12 +185,18 @@ BANKING_ACTIVITIES = {
 
 # Curated customer archetypes verified from test targets
 CURATED_CUSTOMERS = {
+    "106596": "💳 106596 - Top Executive (Credit Card)",
+    "1273930": "⏳ 1273930 - Senior Capital Investor (Long-Term Deposit)",
+    "663201": "⏳ 663201 - Mature Saver (Long-Term Deposit)",
+    "392818": "👤 392818 - Established Client (Particular Account)",
+    "374737": "⭐ 374737 - Wealth Client (Particular Plus Account)",
+    "1542491": "🌟 1542491 - Affluent Resident (More Particular Account)",
+    "1221443": "🌐 1221443 - Tech Resident (Digital E-Account)",
+    "1034229": "💼 1034229 - Recent Graduate (Payroll Account)",
     "1009063": "🛡️ 1009063 - Active Contributor (Pensions)",
     "1002447": "🔄 1002447 - Urban Resident (Direct Debit)",
+    "1002271": "🏦 1002271 - Mid-Career Family (Current Account)",
     "1166753": "🎓 1166753 - University Student (Payroll / Pensions)",
-    "1001710": "💳 1001710 - Young Professional",
-    "1002271": "🏦 1002271 - Mid-Career",
-    "1011464": "📑 1011464 - Seasoned Taxpayer",
     "1011230": "💼 1011230 - Early Career (No Action)",
     "1000008": "⏸️ 1000008 - Dormant Account (No Action)",
     "658033": "⏸️ 658033 - Established Retail (No Action)",
@@ -306,38 +312,182 @@ CUSTOMER_ACCOUNTS_DATA = {
             },
         ],
     },
-    "1001710": {
-        "account_name": "Santander One Professional Account",
-        "iban": "ES88 0049 7621 5532 9910",
-        "status": "Young Professional",
-        "balance": 6120.00,
+    "106596": {
+        "account_name": "Santander Private Banking Wealth Account",
+        "iban": "ES12 0049 8812 4001 0659",
+        "status": "Private Banking (Executive)",
+        "balance": 42150.80,
         "transactions": [
             {
-                "title": "Zara Gran Vía Flagship",
-                "subtitle": "Apparel & Retail Card Payment",
-                "amount": "-€89.95",
-                "delta": -89.95,
+                "title": "Club de Campo Villa de Madrid",
+                "subtitle": "Annual Country Club Membership",
+                "amount": "-€380.00",
+                "delta": -380.0,
                 "time": "Yesterday",
             },
             {
-                "title": "Uber Spain Urban Mobility",
-                "subtitle": "Ride-Hailing App Charge",
-                "amount": "-€18.40",
-                "delta": -18.4,
+                "title": "Iberia Business Class Madrid-Frankfurt",
+                "subtitle": "Airlines Corporate Booking",
+                "amount": "-€640.50",
+                "delta": -640.50,
                 "time": "3 days ago",
             },
             {
-                "title": "Amazon Prime Subscription",
-                "subtitle": "E-Commerce Digital Membership",
-                "amount": "-€4.99",
-                "delta": -4.99,
-                "time": "6 days ago",
+                "title": "Restaurante Zalacaín Madrid",
+                "subtitle": "Executive POS Dining Swipe",
+                "amount": "-€215.00",
+                "delta": -215.0,
+                "time": "5 days ago",
             },
             {
-                "title": "Gourmet Dining Gastrobar",
-                "subtitle": "Restaurant POS Card Payment",
-                "amount": "-€62.00",
-                "delta": -62.0,
+                "title": "Loewe Serrano Flagship",
+                "subtitle": "Luxury Retail Card Swipe",
+                "amount": "-€490.00",
+                "delta": -490.0,
+                "time": "1 week ago",
+            },
+        ],
+    },
+    "1273930": {
+        "account_name": "Santander Senior Premier Portfolio",
+        "iban": "ES81 0049 4432 1098 7393",
+        "status": "Senior Premier Wealth",
+        "balance": 85420.00,
+        "transactions": [
+            {
+                "title": "Notaría González & Asociados",
+                "subtitle": "Estate Advisory & Legal Fees",
+                "amount": "-€450.00",
+                "delta": -450.0,
+                "time": "2 days ago",
+            },
+            {
+                "title": "Hospital San Rafael Madrid",
+                "subtitle": "Private Medical Consultation",
+                "amount": "-€180.00",
+                "delta": -180.0,
+                "time": "4 days ago",
+            },
+            {
+                "title": "Santander Treasury Yield Inflow",
+                "subtitle": "Fixed Income Semi-Annual Yield",
+                "amount": "+€1,850.00",
+                "delta": 1850.0,
+                "time": "1 week ago",
+            },
+            {
+                "title": "Mutua Madrileña Seguros",
+                "subtitle": "Home & Property Insurance",
+                "amount": "-€320.00",
+                "delta": -320.0,
+                "time": "10 days ago",
+            },
+        ],
+    },
+    "663201": {
+        "account_name": "Santander Fixed Capital Deposit",
+        "iban": "ES48 0049 6632 0100 2319",
+        "status": "Long-Term Investor",
+        "balance": 48500.00,
+        "transactions": [
+            {
+                "title": "Fixed Term Deposit Interest Payout",
+                "subtitle": "Quarterly Liquidity Yield",
+                "amount": "+€540.00",
+                "delta": 540.0,
+                "time": "2 days ago",
+            },
+            {
+                "title": "Repsol AutoGas Estación",
+                "subtitle": "Contactless Fuel Debit",
+                "amount": "-€58.40",
+                "delta": -58.4,
+                "time": "4 days ago",
+            },
+            {
+                "title": "Farmacia Central Murcia",
+                "subtitle": "Health & Prescription POS",
+                "amount": "-€28.60",
+                "delta": -28.6,
+                "time": "1 week ago",
+            },
+            {
+                "title": "Iberdrola Clientes S.A.",
+                "subtitle": "Home Electricity Direct Debit",
+                "amount": "-€64.20",
+                "delta": -64.2,
+                "time": "10 days ago",
+            },
+        ],
+    },
+    "1221443": {
+        "account_name": "Santander Online Smart Checking",
+        "iban": "ES65 0049 7120 4455 1443",
+        "status": "Active Digital Resident",
+        "balance": 5340.20,
+        "transactions": [
+            {
+                "title": "Apple Services Dublin",
+                "subtitle": "iCloud & Developer Membership",
+                "amount": "-€12.99",
+                "delta": -12.99,
+                "time": "Yesterday",
+            },
+            {
+                "title": "Cabify Valencia Mobility",
+                "subtitle": "Urban Rideshare Charge",
+                "amount": "-€14.50",
+                "delta": -14.5,
+                "time": "2 days ago",
+            },
+            {
+                "title": "Mercadona Ruzafa Valencia",
+                "subtitle": "Supermarket Contactless Swipe",
+                "amount": "-€52.30",
+                "delta": -52.3,
+                "time": "4 days ago",
+            },
+            {
+                "title": "Amazon Web Services EMEA",
+                "subtitle": "Cloud Hosting Direct Debit",
+                "amount": "-€34.20",
+                "delta": -34.2,
+                "time": "1 week ago",
+            },
+        ],
+    },
+    "1034229": {
+        "account_name": "Santander Smart University Graduate",
+        "iban": "ES39 0049 0154 8820 4229",
+        "status": "University Graduate",
+        "balance": 3890.40,
+        "transactions": [
+            {
+                "title": "Inditex Corporate Vigo",
+                "subtitle": "Graduate Salary SEPA Direct Credit",
+                "amount": "+€1,650.00",
+                "delta": 1650.0,
+                "time": "Yesterday",
+            },
+            {
+                "title": "Zara Home Pontevedra",
+                "subtitle": "Home Decor POS Contactless",
+                "amount": "-€48.90",
+                "delta": -48.9,
+                "time": "3 days ago",
+            },
+            {
+                "title": "Café Central Pontevedra",
+                "subtitle": "Contactless POS Swipe",
+                "amount": "-€4.20",
+                "delta": -4.2,
+                "time": "4 days ago",
+            },
+            {
+                "title": "Renfe Alvia Vigo - Madrid",
+                "subtitle": "High-Speed Rail Travel",
+                "amount": "-€42.00",
+                "delta": -42.0,
                 "time": "1 week ago",
             },
         ],
@@ -378,39 +528,111 @@ CUSTOMER_ACCOUNTS_DATA = {
             },
         ],
     },
-    "1011464": {
-        "account_name": "Santander Senior Privilege Account",
-        "iban": "ES63 0049 4410 9823 1156",
-        "status": "Senior Member",
-        "balance": 24850.00,
+    "392818": {
+        "account_name": "Santander Personal Particular Checking",
+        "iban": "ES51 0049 3928 1800 5512",
+        "status": "Established Personal",
+        "balance": 14250.00,
         "transactions": [
             {
-                "title": "Agencia Tributaria (AEAT Quarterly)",
-                "subtitle": "Fiscal Tax Settlement Payment",
-                "amount": "-€1,450.00",
-                "delta": -1450.0,
-                "time": "4 days ago",
+                "title": "El Corte Inglés Castellana",
+                "subtitle": "Department Store POS Debit",
+                "amount": "-€134.60",
+                "delta": -134.6,
+                "time": "Yesterday",
             },
             {
-                "title": "Farmacia Mayor Madrid",
-                "subtitle": "Healthcare & Prescriptions",
-                "amount": "-€31.20",
-                "delta": -31.2,
+                "title": "Repsol AutoFuel Estación",
+                "subtitle": "Fuel Card Payment",
+                "amount": "-€68.00",
+                "delta": -68.0,
+                "time": "3 days ago",
+            },
+            {
+                "title": "Mercadona Chamberí",
+                "subtitle": "Weekly Household Groceries",
+                "amount": "-€82.40",
+                "delta": -82.4,
                 "time": "5 days ago",
             },
             {
-                "title": "Santander Dividend Yield Payout",
-                "subtitle": "Securities Portfolio Dividend",
-                "amount": "+€620.00",
-                "delta": 620.0,
+                "title": "Bizum Instant Transfer - Carlos",
+                "subtitle": "Peer-to-Peer Mobile Credit",
+                "amount": "+€45.00",
+                "delta": 45.0,
+                "time": "1 week ago",
+            },
+        ],
+    },
+    "374737": {
+        "account_name": "Santander Particular Plus Premium",
+        "iban": "ES29 0049 3747 3701 8834",
+        "status": "Premium Banking",
+        "balance": 31800.50,
+        "transactions": [
+            {
+                "title": "Quarterly Wealth Advisory Retainer",
+                "subtitle": "Private Portfolio Management",
+                "amount": "-€250.00",
+                "delta": -250.0,
+                "time": "2 days ago",
+            },
+            {
+                "title": "Real Club de Golf Sevilla",
+                "subtitle": "Sports Facility Fee",
+                "amount": "-€165.00",
+                "delta": -165.0,
+                "time": "4 days ago",
+            },
+            {
+                "title": "Hospital Quirónsalud Sevilla",
+                "subtitle": "Private Health Payment",
+                "amount": "-€95.00",
+                "delta": -95.0,
                 "time": "1 week ago",
             },
             {
-                "title": "Alcampo Hipermercado",
-                "subtitle": "Household Groceries Payment",
-                "amount": "-€112.50",
-                "delta": -112.5,
+                "title": "Santander Preferred Dividend Yield",
+                "subtitle": "Quarterly Equity Distribution",
+                "amount": "+€480.00",
+                "delta": 480.0,
                 "time": "10 days ago",
+            },
+        ],
+    },
+    "1542491": {
+        "account_name": "Santander Particular More Account",
+        "iban": "ES72 0049 1542 4910 9941",
+        "status": "Affluent Resident",
+        "balance": 22640.00,
+        "transactions": [
+            {
+                "title": "Telefónica Movistar Fibra 1Gb",
+                "subtitle": "Home Broadband Direct Debit",
+                "amount": "-€74.90",
+                "delta": -74.9,
+                "time": "Yesterday",
+            },
+            {
+                "title": "Mercado San Miguel Gourmet",
+                "subtitle": "Contactless POS Dining Swipe",
+                "amount": "-€88.00",
+                "delta": -88.0,
+                "time": "3 days ago",
+            },
+            {
+                "title": "Parador de Turismo Toledo",
+                "subtitle": "Weekend Hospitality Booking",
+                "amount": "-€195.00",
+                "delta": -195.0,
+                "time": "6 days ago",
+            },
+            {
+                "title": "Abono Nómina Profesional",
+                "subtitle": "Corporate Salary Credit",
+                "amount": "+€3,450.00",
+                "delta": 3450.0,
+                "time": "1 week ago",
             },
         ],
     },
@@ -577,6 +799,12 @@ def reset_customer_ledger(customer_id: str):
             )
         else:
             del st.session_state["customer_ledgers"][customer_id]
+
+    if (
+        "claimed_products" in st.session_state
+        and customer_id in st.session_state["claimed_products"]
+    ):
+        del st.session_state["claimed_products"][customer_id]
 
 
 # -----------------------------------------------------------------------------
@@ -801,11 +1029,12 @@ def get_cached_customer_features(customer_id: str):
 
 
 @st.cache_data(show_spinner=False)
-def run_customer_model_inference(customer_id: str):
+def run_customer_model_inference(customer_id: str, claimed_tuple: tuple = ()):
     """
     Runs Triton gRPC inference for the customer's feature tensor.
     Cached in memory so repeated interactions (paycheck, deposit, utility bill)
     can evaluate next-best-action relevance and serve offers with sub-millisecond latency.
+    Excludes both historical holdings and newly claimed demo accounts.
     """
     from src.streaming.event_processor import client as triton_client
     from src.streaming.event_processor import format_predictions
@@ -822,7 +1051,9 @@ def run_customer_model_inference(customer_id: str):
     probs = response.as_numpy("PROBABILITIES")
     triton_time_ms = (time.time() - t_infer_start) * 1000
 
-    recos = format_predictions(probs, held)
+    # Combine static historical holdings with newly claimed demo products
+    all_held = list(dict.fromkeys(held + list(claimed_tuple)))
+    recos = format_predictions(probs, all_held)
     top_product = recos[0] if recos else "do_nothing"
     probs_1d = probs.squeeze()
     prob_dict = {INDEX_TO_TARGET[i]: float(probs_1d[i]) for i in range(16)}
@@ -846,7 +1077,10 @@ def execute_pipeline_for_event(customer_id: str, action: str):
     from src.streaming.event_processor import product_relavance
 
     start_time = time.time()
-    infer_data = run_customer_model_inference(customer_id)
+    claimed = tuple(
+        sorted(st.session_state.get("claimed_products", {}).get(str(customer_id), []))
+    )
+    infer_data = run_customer_model_inference(customer_id, claimed)
 
     recos = infer_data["recos"]
     top_product = infer_data["top_product"]
@@ -913,10 +1147,32 @@ def render_offer_modal(product_key: str, action_key: str):
         if st.button(
             "🚀 Claim & Open Account", type="primary", use_container_width=True
         ):
+            active_cid = st.session_state.get("current_customer", "")
+            if "claimed_products" not in st.session_state:
+                st.session_state["claimed_products"] = {}
+            if active_cid not in st.session_state["claimed_products"]:
+                st.session_state["claimed_products"][active_cid] = set()
+            st.session_state["claimed_products"][active_cid].add(product_key)
+
+            # Record welcome activation in customer live ledger
+            if active_cid:
+                ledger = get_or_init_customer_ledger(active_cid)
+                ledger["transactions"].insert(
+                    0,
+                    {
+                        "title": f"Account Activated: {meta.get('name', product_key)}",
+                        "subtitle": "1-Click Digital Setup • Zero Maintenance Fee",
+                        "amount": "Activated",
+                        "delta": 0.0,
+                        "time": time.strftime("%H:%M:%S Today"),
+                    },
+                )
+
             st.session_state["claimed_offer"] = meta.get("name", product_key)
             st.session_state.pop("popup_offer_to_render", None)
+            st.session_state.pop("last_emitted_payload", None)
             st.toast(
-                "🎉 Product application submitted! Your relationship manager will confirm.",
+                f"🎉 {meta.get('name', product_key)} opened! Added to your Santander portfolio.",
                 icon="✅",
             )
             st.rerun()
@@ -977,11 +1233,17 @@ with st.sidebar:
 
         st.subheader("📦 Currently Held Products")
         held = dossier["held_products"]
-        if held:
+        claimed = list(
+            st.session_state.get("claimed_products", {}).get(active_cust_id, [])
+        )
+        all_held = list(dict.fromkeys(held + claimed))
+        if all_held:
             held_html = "".join(
                 [
-                    f"<span class='product-pill'>✓ {PRODUCT_METADATA.get(p, {}).get('name', p)}</span>"
-                    for p in held
+                    f"<span class='product-pill' style='background-color: #DCFCE7; border: 1.5px solid #059669; color: #065F46; font-weight: 700;'>✨ {PRODUCT_METADATA.get(p, {}).get('name', p)} (New)</span>"
+                    if p in claimed
+                    else f"<span class='product-pill'>✓ {PRODUCT_METADATA.get(p, {}).get('name', p)}</span>"
+                    for p in all_held
                 ]
             )
             st.markdown(held_html, unsafe_allow_html=True)

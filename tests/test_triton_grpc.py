@@ -11,7 +11,7 @@ Validates:
 
 import sys
 from pathlib import Path
-
+import os
 import numpy as np
 
 _repo_root = Path(__file__).resolve().parent.parent
@@ -28,7 +28,7 @@ from src.config import (
 )
 
 
-def test_triton_grpc_inference(retries: int = 2, retry_delay: float = 0.5):
+def test_triton_grpc_inference(retries: int = 10, retry_delay: float = 1.5):
     client = grpcclient.InferenceServerClient(url="localhost:8001")
 
     # 1. Health checks (with retry for tunnel / initialization latency)
@@ -42,9 +42,21 @@ def test_triton_grpc_inference(retries: int = 2, retry_delay: float = 0.5):
             if attempt < retries - 1:
                 time.sleep(retry_delay)
     if not server_live:
-        pytest.skip(
-            "Triton Server is not running on localhost:8001 (skipping integration test)"
-        )
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            pytest.skip(
+                "Triton Server is not running on localhost:8001 (skipping integration test)"
+            )
+        else:
+            print(
+                "\n[WARN] Triton Server is not running or not responding on localhost:8001."
+            )
+            print(
+                "       - Check if containers are still starting: ssh into the machine and run 'docker compose ps'"
+            )
+            print(
+                "       - Check logs: 'docker compose logs -f init-model' or 'docker compose logs -f triton'"
+            )
+            return False
 
     assert client.is_server_ready(), "Triton Server is not ready"
     assert client.is_model_ready("tabdpt"), "Model 'tabdpt' is not ready"
@@ -87,5 +99,8 @@ def test_triton_grpc_inference(retries: int = 2, retry_delay: float = 0.5):
 
 
 if __name__ == "__main__":
-    test_triton_grpc_inference()
-    print("\nAll Triton gRPC tests passed successfully!")
+    passed = test_triton_grpc_inference()
+    if passed is not False:
+        print("\nAll Triton gRPC tests passed successfully!")
+    else:
+        sys.exit(1)
