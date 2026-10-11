@@ -4,12 +4,14 @@ Comprehensive Evaluation Metrics Suite for TabDPT & Benchmark Models.
 Computes:
 1. Ranking: MAP@7, MAP@4 (Warm & Cold), NDCG@4, NDCG@5, NDCG@7, MRR.
 2. Hit Rates & Coverage: Recall@3, Hit Rate@3, Recall@4, Hit Rate@4, Recall@7, Hit Rate@7.
-3. Calibration & Stability: Expected Calibration Error (ECE), Population Stability Index (PSI).
-4. Alert & Production Dynamics: Active vs. Silent Alert distribution, Buyer & Non-buyer Top-1 accuracies.
-5. Latency Profiling: Mean, p50, p95, p99 (ms) per inference query.
+3. Calibration & Stability: Expected Calibration Error (ECE), Population Stability Index (PSI), Jensen-Shannon Divergence (JS).
+4. Catalog Diversity & Fairness: Catalog Recommendation Gini Index.
+5. Alert & Production Dynamics: Active vs. Silent Alert distribution, Buyer & Non-buyer Top-1 accuracies.
+6. Latency Profiling: Mean, p50, p95, p99 (ms) per inference query.
 """
 
 import numpy as np
+from scipy.spatial.distance import jensenshannon
 
 
 def compute_ap_at_k(recommended: list[str], actual: list[str], k: int = 7) -> float:
@@ -192,6 +194,91 @@ def compute_psi(
 
     psi_val = np.sum((q - p) * np.log(q / p))
     return float(psi_val)
+
+
+def compute_js_divergence(
+    expected_dist: np.ndarray, actual_dist: np.ndarray
+) -> dict[str, float]:
+    """
+    Computes bounded Jensen-Shannon Divergence and Jensen-Shannon Distance.
+
+    JS Divergence is a symmetric, smoothed, and bounded divergence in [0.0, 1.0] (using log2).
+    JS Distance is the square root of JS Divergence and satisfies triangle inequality.
+    Unlike PSI, it does not require arbitrary epsilon clipping for zero-probability bins.
+
+    Args:
+        expected_dist: 1D array of expected/baseline probabilities across classes.
+        actual_dist: 1D array of actual/predicted probabilities across classes.
+
+    Returns:
+        Dict containing:
+        - js_divergence: Float score in [0.0, 1.0]
+        - js_distance: Float score in [0.0, 1.0] (sqrt of js_divergence)
+    """
+    p = np.asarray(expected_dist, dtype=np.float64)
+    q = np.asarray(actual_dist, dtype=np.float64)
+
+    sum_p = np.sum(p)
+    sum_q = np.sum(q)
+
+    if sum_p == 0 or sum_q == 0:
+        return {"js_divergence": 0.0, "js_distance": 0.0}
+
+    p = p / sum_p
+    q = q / sum_q
+
+    # jensenshannon from scipy computes the square root (JS distance) using log base 2
+    js_dist = float(jensenshannon(p, q, base=2))
+    js_dist = float(np.clip(js_dist, 0.0, 1.0))
+    js_div = float(np.clip(js_dist**2, 0.0, 1.0))
+
+    return {
+        "js_divergence": round(js_div, 4),
+        "js_distance": round(js_dist, 4),
+    }
+
+
+def compute_catalog_gini(
+    all_recommended: list[list[str]],
+    catalog_classes: list[str] | None = None,
+) -> float:
+    """
+    Computes Gini inequality coefficient across the recommendation catalog.
+
+    Measures whether recommendations are evenly distributed across products
+    (Gini close to 0.0 = high catalog diversity) or heavily concentrated on a few
+    dominant products (Gini close to 1.0 = extreme popularity bias / Matthew effect).
+
+    Args:
+        all_recommended: List of recommended product name lists per customer.
+        catalog_classes: Optional list of catalog product names to evaluate against.
+                         If None, uses all unique products observed in recommendations.
+
+    Returns:
+        Gini float score in [0.0, 1.0].
+    """
+    if catalog_classes is not None:
+        counts = {c: 0 for c in catalog_classes}
+    else:
+        counts = {}
+
+    for recs in all_recommended:
+        for item in recs:
+            counts[item] = counts.get(item, 0) + 1
+
+    if not counts:
+        return 0.0
+
+    frequencies = np.sort(np.array(list(counts.values()), dtype=np.float64))
+    n = len(frequencies)
+    total = np.sum(frequencies)
+
+    if total == 0 or n <= 1:
+        return 0.0
+
+    index = np.arange(1, n + 1)
+    gini = (2.0 * np.sum(index * frequencies)) / (n * total) - (n + 1.0) / n
+    return round(float(np.clip(gini, 0.0, 1.0)), 4)
 
 
 def compute_alert_distribution(

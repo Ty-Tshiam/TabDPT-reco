@@ -13,7 +13,9 @@ from src.benchmark_model.metrics import (
     compute_alert_distribution,
     compute_ap_at_k,
     compute_buyer_accuracy_breakdown,
+    compute_catalog_gini,
     compute_ece,
+    compute_js_divergence,
     compute_map_at_k,
     compute_mrr,
     compute_ndcg_at_k,
@@ -98,6 +100,48 @@ class TestMetrics:
 
         q_drift = np.array([0.6, 0.2, 0.1, 0.1])
         assert compute_psi(p, q_drift) > 0.1
+
+    def test_compute_js_divergence(self):
+        # Identical distributions -> 0 divergence and 0 distance
+        p = np.array([0.25, 0.25, 0.25, 0.25])
+        q = np.array([0.25, 0.25, 0.25, 0.25])
+        res = compute_js_divergence(p, q)
+        assert res["js_divergence"] == pytest.approx(0.0, abs=1e-4)
+        assert res["js_distance"] == pytest.approx(0.0, abs=1e-4)
+
+        # Orthogonal distributions -> maximum divergence = 1.0 (with base 2)
+        p_ortho = np.array([1.0, 0.0])
+        q_ortho = np.array([0.0, 1.0])
+        res_ortho = compute_js_divergence(p_ortho, q_ortho)
+        assert res_ortho["js_divergence"] == pytest.approx(1.0, abs=1e-4)
+        assert res_ortho["js_distance"] == pytest.approx(1.0, abs=1e-4)
+
+        # Asymmetric / moderate drift
+        p_norm = np.array([0.4, 0.3, 0.2, 0.1])
+        q_norm = np.array([0.1, 0.2, 0.3, 0.4])
+        res_norm = compute_js_divergence(p_norm, q_norm)
+        assert 0.0 < res_norm["js_divergence"] < 1.0
+        assert pytest.approx(res_norm["js_distance"], abs=1e-2) == np.sqrt(res_norm["js_divergence"])
+
+    def test_compute_catalog_gini(self):
+        catalog = ["prod_a", "prod_b", "prod_c", "prod_d"]
+        # Perfectly uniform recommendations -> Gini = 0.0
+        uniform_recs = [
+            ["prod_a", "prod_b"],
+            ["prod_c", "prod_d"],
+            ["prod_a", "prod_c"],
+            ["prod_b", "prod_d"],
+        ]
+        assert compute_catalog_gini(uniform_recs, catalog) == pytest.approx(0.0, abs=1e-4)
+
+        # Heavily concentrated / skewed on prod_a -> Gini close to maximum inequality (1 - 1/n)
+        skewed_recs = [["prod_a"] for _ in range(100)]
+        gini_skewed = compute_catalog_gini(skewed_recs, catalog)
+        # For 4 items with 1 having all mass: (4-1)/4 = 0.75
+        assert gini_skewed == pytest.approx(0.75, abs=1e-2)
+
+        # Empty recs -> 0.0
+        assert compute_catalog_gini([], catalog) == 0.0
 
     def test_compute_alert_distribution(self):
         # 3 instances: 2 class 0 (silent), 1 class 3 (active)

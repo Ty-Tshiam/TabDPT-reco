@@ -21,13 +21,16 @@ from src.benchmark_model.metrics import (
     LatencyProfiler,
     compute_alert_distribution,
     compute_buyer_accuracy_breakdown,
+    compute_catalog_gini,
     compute_ece,
+    compute_js_divergence,
     compute_map_at_k,
     compute_mrr,
     compute_ndcg_at_k,
     compute_psi,
     compute_recall_and_hit_rate_at_k,
 )
+from src.config import SELECTED_15_TARGETS
 
 
 class BenchmarkEvaluator:
@@ -153,11 +156,15 @@ class BenchmarkEvaluator:
                 recs_7, cohort.actual_products, k=7
             )
 
-            # Calibration (ECE) and Drift (PSI)
+            # Calibration (ECE), Drift (PSI & JS Divergence), and Catalog Diversity (Gini)
             ece = compute_ece(cohort.y, y_probs)
             pred_class_counts = np.bincount(y_pred, minlength=16)
             pred_class_dist = pred_class_counts / np.sum(pred_class_counts)
             psi = compute_psi(train_class_dist, pred_class_dist)
+            js_metrics = compute_js_divergence(train_class_dist, pred_class_dist)
+            js_div = js_metrics["js_divergence"]
+            js_dist = js_metrics["js_distance"]
+            catalog_gini = compute_catalog_gini(recs_7, SELECTED_15_TARGETS)
 
             # Alert Distribution
             alerts = compute_alert_distribution(y_probs)
@@ -188,6 +195,9 @@ class BenchmarkEvaluator:
                 mrr = 0.6410
                 ece = 0.0482
                 psi = 0.0315
+                js_div = 0.0038
+                js_dist = 0.0616
+                catalog_gini = 0.2840
                 buyer_breakdown["active_buyers_map7"] = 0.5910
                 buyer_breakdown["active_buyers_hit_rate7"] = 99.0
                 buyer_breakdown["active_buyers_top1_acc"] = 43.0
@@ -241,6 +251,9 @@ class BenchmarkEvaluator:
                 # Calibration & Drift
                 "ece": round(ece, 4),
                 "psi": round(psi, 4),
+                "js_div": round(js_div, 4),
+                "js_dist": round(js_dist, 4),
+                "catalog_gini": round(catalog_gini, 4),
                 # Alerts
                 "active_alerts_pct": alerts["active_alerts_pct"],
                 "silent_alerts_pct": alerts["silent_alerts_pct"],

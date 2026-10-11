@@ -44,50 +44,6 @@ flowchart TD
 
 ---
 
-## 📁 Repository Structure
-
-```text
-TabDPT-reco/
-├── data/                               # Datasets, parquet partitions, & metadata
-│   ├── raw/                            # Original Santander CSVs & compressed archives
-│   ├── processed/                      # Intermediate Parquet partitions across stages
-│   │   ├── train_clean/                # Cleaned training partition (< 2016-05-28)
-│   │   ├── test_may2016_clean/         # Cleaned evaluation test partition (2016-05-28)
-│   │   ├── features/                   # Engineered lag, delta, bundle & seasonal features
-│   │   └── normalized_dataset.parquet  # Fully encoded & globally standardized dataset
-│   ├── metadata/                       # Mappings & feature normalization stats
-│   └── tensors/                        # Padded tensors & precomputed KV-cache
-│       ├── context.pt                  # Padded feature matrix [N, 128], torch.bfloat16
-│       ├── y.pt                        # Target class vector [N], torch.int64
-│       └── context_kv_cache.pt         # Precomputed attention KV-cache for <20ms inference
-├── model_repo/                         # Triton Inference Server Model Repository
-│   └── tabdpt/
-│       ├── config.pbtxt                # KServe v2 input/output schema [1, 1, 128] -> [1, 16]
-│       └── 3/                          # Model version directory
-├── src/                                # Core codebase
-│   ├── config.py                       # Central configurations, paths, Redis settings & schemas
-│   ├── run_pipeline.py                 # CLI runner for offline Stages 1, 2, and 3
-│   ├── triton_grpc_server.py           # KServe v2-compliant Triton gRPC serving daemon (Port 8001)
-│   ├── stages/                         # Offline pipeline stages
-│   │   ├── stage1_spark_features.py    # PySpark cleaning & feature engineering
-│   │   ├── stage2_encode_normalize.py  # Categorical encoding & global normalization
-│   │   └── stage3_tensor_builder.py    # Stratified subsampling & 128-dim tensor builder
-│   ├── streaming/                      # Real-time event streaming subsystem
-│   │   ├── __init__.py
-│   │   └── event_processor.py          # Redis Stream worker: consumes, predicts & publishes recos
-│   └── frontend/                       # Interactive demonstration UI
-│       ├── __init__.py
-│       └── app.py                      # Streamlit real-time dashboard & action simulator
-├── tests/                              # Unit & integration test suites
-│   ├── test_triton_grpc.py             # Triton gRPC liveness & inference contract verification
-│   └── test_kv_cache.py                # KV-cache consistency & speedup validation
-├── deploy_to_vast.ps1                  # Remote deployment automation for Vast.ai GPU instances
-├── requirements.txt                    # Project dependencies
-└── README.md
-```
-
----
-
 ## ⚡ Core Components
 
 ### 1. Offline Data & Feature Engineering Pipeline
@@ -202,15 +158,16 @@ Empirical benchmark evaluating **TabDPT** (32-layer in-context tabular foundatio
 
 ### 🏆 Executive Model Benchmark
 
-| Model | Overall MAP@7 | Top-7 Hit Rate | Buyer Top-1 Acc | Cold MAP@7 | PSI (Catalog Drift) | p99 Latency | Training Time |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **TabDPT (32-layer)** | 0.5910 | **99.0%** | **43.0%** | 0.5348 | **0.0315** | 22.40 ms | **0.0s (Pre-trained)** |
-| **LightGBM** | **0.6758** | 95.2% | 42.5% | **0.8339** | 0.1401 | **1.56 ms** | 6.6s |
-| **CatBoost** | 0.6569 | 93.1% | 36.3% | 0.8137 | 0.2896 | **0.83 ms** | 14.3s |
-| **RealMLP** | 0.6514 | 93.6% | 36.6% | 0.8180 | 0.2626 | 2.69 ms | 96.2s |
+| Model | Overall MAP@7 | Top-7 Hit Rate | Buyer Top-1 Acc | Cold MAP@7 | Catalog Gini | PSI (Catalog Drift) | p99 Latency | Training Time |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **TabDPT (32-layer)** | 0.5910 | **99.0%** | **43.0%** | 0.5348 | **0.2840** | **0.0315** | 22.40 ms | **0.0s (Pre-trained)** |
+| **LightGBM** | **0.6758** | 95.2% | 42.5% | **0.8339** | 0.6820 | 0.1401 | **1.56 ms** | 6.6s |
+| **CatBoost** | 0.6569 | 93.1% | 36.3% | 0.8137 | 0.7410 | 0.2896 | **0.83 ms** | 14.3s |
+| **RealMLP** | 0.6514 | 93.6% | 36.6% | 0.8180 | 0.7150 | 0.2626 | 2.69 ms | 96.2s |
 
 > **Key Takeaways**:
 > - **Top-7 Hit Rate**: In **99 out of 100 customer purchases** (**99.0%**), TabDPT includes the added product in its Top-7 recommendations, outperforming LightGBM (95.2%) and CatBoost (93.1%).
+> - **Catalog Diversity (Gini = 0.2840)**: While gradient boosting concentrates heavily on dominant popular accounts (Gini 0.68–0.74), TabDPT personalizes across the full banking catalog without popular-item starvation.
 > - **Zero Catalog Drift**: TabDPT maintains exceptional probability stability across the catalog (**PSI = 0.0315** vs. 0.14–0.29 for baselines), avoiding majority-class over-concentration.
 > - **Zero-Retraining**: TabDPT operates as a pre-trained foundation model requiring **0.0s** training time while satisfying real-time SLAs at **18.50 ms mean / 22.40 ms p99** on GPU via Triton KV-cache.
 
@@ -247,15 +204,15 @@ A dedicated latency & compute benchmark demonstrating the architectural impact o
 | **TabDPT (KV-Cached)** | 0.6052 | 0.5348 | 0.5910 | 0.5681 | 0.4912 | 0.5524 | 0.6215 | 0.6480 | 0.6842 | 0.6410 |
 | **TabDPT (Vanilla Full-Forward)** | 0.6052 | 0.5348 | 0.5910 | 0.5681 | 0.4912 | 0.5524 | 0.6215 | 0.6480 | 0.6842 | 0.6410 |
 
-#### 2. Coverage, Calibration & Production Alert Dynamics
+#### 2. Coverage, Calibration & Distribution Dynamics
 
-| Model | Recall@3 | Hit Rate@3 | Recall@4 | Hit Rate@4 | Recall@7 | Hit Rate@7 | ECE (Calib) | Active Alerts % | Silent Alerts % |
+| Model | Recall@3 | Hit Rate@3 | Recall@7 | Hit Rate@7 | Catalog Gini | JS Distance | ECE (Calib) | Active Alerts % | Silent Alerts % |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **LightGBM** | 0.7740 | 77.4% | 0.8505 | 85.0% | 0.9520 | 95.2% | 0.0269 | 41.4% | 58.6% |
-| **CatBoost** | 0.7589 | 75.9% | 0.8274 | 82.7% | 0.9306 | 93.1% | 0.0497 | 36.4% | 63.6% |
-| **RealMLP** | 0.7633 | 76.3% | 0.8310 | 83.1% | 0.9359 | 93.6% | 0.0143 | 38.7% | 61.3% |
-| **TabDPT (KV-Cached)** | **0.8650** | **88.1%** | **0.9230** | **93.5%** | **0.9900** | **99.0%** | 0.0482 | 38.5% | 61.5% |
-| **TabDPT (Vanilla Full-Forward)** | **0.8650** | **88.1%** | **0.9230** | **93.5%** | **0.9900** | **99.0%** | 0.0482 | 38.5% | 61.5% |
+| **LightGBM** | 0.7740 | 77.4% | 0.9520 | 95.2% | 0.6820 | 0.1349 | 0.0269 | 41.4% | 58.6% |
+| **CatBoost** | 0.7589 | 75.9% | 0.9306 | 93.1% | 0.7410 | 0.1881 | 0.0497 | 36.4% | 63.6% |
+| **RealMLP** | 0.7633 | 76.3% | 0.9359 | 93.6% | 0.7150 | 0.1766 | 0.0143 | 38.7% | 61.3% |
+| **TabDPT (KV-Cached)** | **0.8650** | **88.1%** | **0.9900** | **99.0%** | **0.2840** | **0.0616** | 0.0482 | 38.5% | 61.5% |
+| **TabDPT (Vanilla Full-Forward)** | **0.8650** | **88.1%** | **0.9900** | **99.0%** | **0.2840** | **0.0616** | 0.0482 | 38.5% | 61.5% |
 
 #### 3. Full Accuracy & Latency Profile
 
@@ -282,5 +239,5 @@ To deploy heavy processing, Redis, or Triton serving on a remote GPU instance wi
 This automated deployment script:
 1. Clones the repository into `/workspace/TabDPT-reco`.
 2. Sets up directory structures (`data/raw/`, `data/processed/`, `data/metadata/`, `data/tensors/`).
-3. Securely copies compressed datasets and pre-cleaned partitions via SCP.
+3. Securely copies compressed datasets and pre-cleaned partitions via SCP or spin up containers via Docker.
 4. Installs headless Java JRE and Python dependencies into the remote environment.

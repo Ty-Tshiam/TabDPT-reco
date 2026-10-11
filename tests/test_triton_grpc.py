@@ -9,9 +9,10 @@ Validates:
 5. Recommendation ranking against the 16 target product classes.
 """
 
+import os
 import sys
 from pathlib import Path
-import os
+
 import numpy as np
 
 _repo_root = Path(__file__).resolve().parent.parent

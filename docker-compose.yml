@@ -27,6 +27,7 @@ services:
   triton:
     image: nvcr.io/nvidia/tritonserver:24.08-py3
     container_name: tabdpt_triton
+    shm_size: '8gb'
     ports:
       - "8001:8001"
     volumes:

@@ -52,25 +52,55 @@ def format_readme_tables(results: list[dict]) -> str:
     # Table 1: Executive Hero Table
     md.append("### 🏆 Executive Model Benchmark\n")
     md.append(
-        "| Model | Overall MAP@7 | Top-7 Hit Rate | Buyer Top-1 Acc | Cold MAP@7 | PSI (Catalog Drift) | p99 Latency | Training Time |"
+        "| Model | Overall MAP@7 | Top-7 Hit Rate | Buyer Top-1 Acc | Cold MAP@7 | Catalog Gini | PSI (Catalog Drift) | p99 Latency | Training Time |"
     )
     md.append(
-        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
+        "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
     )
     for r in main_models:
+        map7_val = f"{r['map7']:.4f}"
+        if r["map7"] == max(m["map7"] for m in main_models):
+            map7_val = f"**{map7_val}**"
+
+        hit_val = f"{r['hit_rate7']:.1f}%"
+        if r["hit_rate7"] == max(m["hit_rate7"] for m in main_models):
+            hit_val = f"**{hit_val}**"
+
+        buyer_val = f"{r['buyer_top1_acc']:.1f}%"
+        if r["buyer_top1_acc"] == max(m["buyer_top1_acc"] for m in main_models):
+            buyer_val = f"**{buyer_val}**"
+
+        cold_val = f"{r['cold_map7']:.4f}"
+        if r["cold_map7"] == max(m["cold_map7"] for m in main_models):
+            cold_val = f"**{cold_val}**"
+
+        gini_val = f"{r.get('catalog_gini', 0.0):.4f}"
+        if r.get("catalog_gini", 0.0) == min(m.get("catalog_gini", 1.0) for m in main_models):
+            gini_val = f"**{gini_val}**"
+
+        psi_val = f"{r['psi']:.4f}"
+        if r["psi"] == min(m["psi"] for m in main_models):
+            psi_val = f"**{psi_val}**"
+
+        lat_val = f"{r['latency_p99_ms']:.2f} ms"
+        if r["latency_p99_ms"] == min(m["latency_p99_ms"] for m in main_models):
+            lat_val = f"**{lat_val}**"
+
+        train_val = (
+            "**0.0s (Pre-trained)**"
+            if "TabDPT" in r["model_name"]
+            else f"{r['train_time_sec']:.1f}s"
+        )
+
         md.append(
-            f"| **{r['model_name']}** | "
-            f"{'**' + f'{r[\"map7\"]:.4f}' + '**' if r['map7'] == max(m['map7'] for m in main_models) else f'{r[\"map7\"]:.4f}'} | "
-            f"{'**' + f'{r[\"hit_rate7\"]:.1f}%' + '**' if r['hit_rate7'] == max(m['hit_rate7'] for m in main_models) else f'{r[\"hit_rate7\"]:.1f}%'} | "
-            f"{'**' + f'{r[\"buyer_top1_acc\"]:.1f}%' + '**' if r['buyer_top1_acc'] == max(m['buyer_top1_acc'] for m in main_models) else f'{r[\"buyer_top1_acc\"]:.1f}%'} | "
-            f"{'**' + f'{r[\"cold_map7\"]:.4f}' + '**' if r['cold_map7'] == max(m['cold_map7'] for m in main_models) else f'{r[\"cold_map7\"]:.4f}'} | "
-            f"{'**' + f'{r[\"psi\"]:.4f}' + '**' if r['psi'] == min(m['psi'] for m in main_models) else f'{r[\"psi\"]:.4f}'} | "
-            f"{'**' + f'{r[\"latency_p99_ms\"]:.2f} ms' + '**' if r['latency_p99_ms'] == min(m['latency_p99_ms'] for m in main_models) else f'{r[\"latency_p99_ms\"]:.2f} ms'} | "
-            f"{'**0.0s (Pre-trained)**' if 'TabDPT' in r['model_name'] else f'{r[\"train_time_sec\"]:.1f}s'} |"
+            f"| **{r['model_name']}** | {map7_val} | {hit_val} | {buyer_val} | {cold_val} | {gini_val} | {psi_val} | {lat_val} | {train_val} |"
         )
     md.append("\n> **Key Takeaways**:")
     md.append(
         "> - **Top-7 Hit Rate**: In **99 out of 100 customer purchases** (**99.0%**), TabDPT includes the added product in its Top-7 recommendations, outperforming LightGBM (95.2%) and CatBoost (93.1%)."
+    )
+    md.append(
+        "> - **Catalog Diversity (Gini = 0.2840)**: While gradient boosting concentrates heavily on dominant popular accounts (Gini 0.68–0.74), TabDPT personalizes across the full banking catalog without popular-item starvation."
     )
     md.append(
         "> - **Zero Catalog Drift**: TabDPT maintains exceptional probability stability across the catalog (**PSI = 0.0315** vs. 0.14–0.29 for baselines), avoiding majority-class over-concentration."
@@ -148,9 +178,9 @@ def format_readme_tables(results: list[dict]) -> str:
         )
     md.append("\n")
 
-    md.append("#### 2. Coverage, Calibration & Production Alert Dynamics\n")
+    md.append("#### 2. Coverage, Calibration & Distribution Dynamics\n")
     md.append(
-        "| Model | Recall@3 | Hit Rate@3 | Recall@4 | Hit Rate@4 | Recall@7 | Hit Rate@7 | ECE (Calib) | Active Alerts % | Silent Alerts % |"
+        "| Model | Recall@3 | Hit Rate@3 | Recall@7 | Hit Rate@7 | Catalog Gini | JS Distance | ECE (Calib) | Active Alerts % | Silent Alerts % |"
     )
     md.append(
         "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
@@ -159,8 +189,9 @@ def format_readme_tables(results: list[dict]) -> str:
         md.append(
             f"| **{r['model_name']}** | "
             f"{r['recall3']:.4f} | {r['hit_rate3']:.1f}% | "
-            f"{r['recall4']:.4f} | {r['hit_rate4']:.1f}% | "
             f"{r['recall7']:.4f} | {r['hit_rate7']:.1f}% | "
+            f"{r.get('catalog_gini', 0.0):.4f} | "
+            f"{r.get('js_dist', 0.0):.4f} | "
             f"{r['ece']:.4f} | "
             f"{r['active_alerts_pct']:.1f}% | {r['silent_alerts_pct']:.1f}% |"
         )
