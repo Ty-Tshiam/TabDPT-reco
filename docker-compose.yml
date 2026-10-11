@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # ==============================================================
+  # 1. INIT CONTAINER: Generates KV-Cache & Model Artifacts
+  # ==============================================================
+  init-model:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: tabdpt_init_model
+    command: ["python", "src/save_model.py"]
+    volumes:
+      - ./data:/app/data
+      - ./model_repo:/app/model_repo
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ==============================================================
+  # 2. TRITON SERVER: Boots ONLY AFTER init-model finishes
+  # ==============================================================
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.08-py3
+    container_name: tabdpt_triton
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./model_repo:/models
+      - ./data/tensors:/data/tensors
+    command: ["tritonserver", "--model-repository=/models"]
+    depends_on:
+      init-model:
+        condition: service_completed_successfully   # <--- GUARANTEES KV-CACHE EXISTS!
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ==============================================================
+  # 3. STREAMING BUS & CACHE
+  # ==============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: tabdpt_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ==============================================================
+  # 4. STREAMING WORKER (Event Processor)
+  # ==============================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: tabdpt_worker
+    depends_on:
+      redis:
+        condition: service_started
+      triton:
+        condition: service_started
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USE_FAKE_REDIS=false
+      - TRITON_GRPC_URL=triton:8001
+    volumes:
+      - ./data:/app/data
+
+  # ==============================================================
+  # 5. STREAMLIT DEMO PORTAL
+  # ==============================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: tabdpt_frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - redis
+      - worker
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USE_FAKE_REDIS=false
+      - TRITON_GRPC_URL=triton:8001
+    volumes:
+      - ./data:/app/data
+      - ./docs:/app/docs

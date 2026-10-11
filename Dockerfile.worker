@@ -1,0 +1,19 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+COPY src/TabDPT-inference /app/src/TabDPT-inference
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ /app/src/
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "src/streaming/event_processor.py"]

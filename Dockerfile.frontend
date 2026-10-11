@@ -1,0 +1,26 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+# Install system utilities needed for building packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency specifications first for layer caching
+COPY requirements.txt .
+COPY src/TabDPT-inference /app/src/TabDPT-inference
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code and config
+COPY src/ /app/src/
+COPY docs/ /app/docs/
+
+# Set Python module resolution path
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "src/frontend/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

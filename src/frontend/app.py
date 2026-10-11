@@ -740,10 +740,13 @@ def check_triton_status():
     if not TRITON_CLIENT_AVAILABLE:
         return False, "tritonclient not installed"
 
-    client = grpcclient.InferenceServerClient(url=TRITON_GRPC_URL)
-    if client.is_server_live() and client.is_model_ready("tabdpt"):
-        return True, "Online & Ready (tabdpt v3)"
-    return False, "Server reachable, model not ready"
+    try:
+        client = grpcclient.InferenceServerClient(url=TRITON_GRPC_URL)
+        if client.is_server_live() and client.is_model_ready("tabdpt"):
+            return True, "Online & Ready (tabdpt v3)"
+        return False, "Server reachable, model not ready"
+    except Exception as e:
+        return False, f"Offline ({e.__class__.__name__})"
 
 
 @st.cache_data(show_spinner=False)

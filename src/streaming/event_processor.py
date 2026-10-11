@@ -570,7 +570,8 @@ if __name__ == "__main__":
                             f"[Worker] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}"
                         )
 
-                        target_info = get_customer_targets(customer_id).to_dicts()[0]
+                        target_matches = get_customer_targets(customer_id).to_dicts()
+                        target_info = target_matches[0] if target_matches else {}
                         print(f"[Worker] Got target info \n {target_info}")
 
                         inputs = [

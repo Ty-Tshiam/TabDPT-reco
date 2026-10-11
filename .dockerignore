@@ -1,0 +1,30 @@
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Raw heavy datasets (>2 GB)
+data/raw/
+*.zip
+*.csv
+
+# Precomputed large KV cache (generated dynamically inside container via init-model)
+data/tensors/context_kv_cache.pt
+model_repo/tabdpt/3/model.pt
+
+# Git & IDE configs
+.git/
+.gitignore
+.vscode/
+.idea/
+.ipynb_checkpoints/
