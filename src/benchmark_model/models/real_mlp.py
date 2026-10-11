@@ -9,9 +9,10 @@ Implements a high-capacity, regularized Tabular MLP with:
 """
 
 import time
+
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.benchmark_model.base import BaseRecommender

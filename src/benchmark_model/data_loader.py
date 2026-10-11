@@ -10,7 +10,7 @@ Loads training context tensors (context.pt, y.pt) and test evaluation cohorts:
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
+
 import numpy as np
 import polars as pl
 import torch
@@ -22,7 +22,6 @@ from src.config import (
     INDEX_TO_TARGET,
     NON_FEATURE_COLS,
     NORMALIZATION_STATS_JSON,
-    SELECTED_15_TARGETS,
     Y_TENSOR_PATH,
 )
 

@@ -9,8 +9,6 @@ Computes:
 5. Latency Profiling: Mean, p50, p95, p99 (ms) per inference query.
 """
 
-import time
-from typing import Any
 import numpy as np
 
 

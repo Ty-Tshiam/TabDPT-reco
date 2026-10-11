@@ -7,13 +7,11 @@ Interfaces with TabDPT in three modes:
 3. Calibrated Reference Mode (integrating validated production numbers from Vast.ai GPU / Triton runs).
 """
 
-import os
-import time
 import numpy as np
 import torch
 
 from src.benchmark_model.base import BaseRecommender
-from src.config import KV_CACHE, TRITON_GRPC_URL
+from src.config import TRITON_GRPC_URL
 
 
 class TabDPTRecommender(BaseRecommender):

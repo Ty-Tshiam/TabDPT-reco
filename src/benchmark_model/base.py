@@ -9,10 +9,10 @@ Defines the contract for all candidate models (RealMLP, LightGBM, CatBoost, TabD
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+
 import numpy as np
 
-from src.config import INDEX_TO_TARGET, SELECTED_15_TARGETS
+from src.config import INDEX_TO_TARGET
 
 
 class BaseRecommender(ABC):
@@ -33,7 +33,6 @@ class BaseRecommender(ABC):
             X: 2D NumPy array of shape (N, num_features).
             y: 1D NumPy array of shape (N,) with integers 0..15.
         """
-        pass
 
     @abstractmethod
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -46,7 +45,6 @@ class BaseRecommender(ABC):
         Returns:
             2D NumPy array of shape (N, 16) with row sums close to 1.0.
         """
-        pass
 
     def recommend(
         self,
@@ -85,7 +83,6 @@ class BaseRecommender(ABC):
 
     def save(self, path: str) -> None:
         """Persist model state to disk (optional fallback)."""
-        pass
 
     def load(self, path: str) -> "BaseRecommender":
         """Load model state from disk (optional fallback)."""

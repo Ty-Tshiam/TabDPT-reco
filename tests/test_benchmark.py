@@ -2,11 +2,9 @@
 
 import numpy as np
 import pytest
-import torch
 
 from src.benchmark_model.base import BaseRecommender
 from src.benchmark_model.data_loader import (
-    get_normalization_stats,
     load_context_data,
     prepare_benchmark_datasets,
 )

@@ -5,7 +5,9 @@ Implements high-performance gradient boosted decision trees for 16-class product
 """
 
 import time
+
 import numpy as np
+
 from src.benchmark_model.base import BaseRecommender
 
 
