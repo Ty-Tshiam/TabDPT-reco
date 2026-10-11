@@ -24,11 +24,7 @@ class TabDPTRecommender(BaseRecommender):
         device: str | None = None,
         use_gpu_profile: bool = True,
     ):
-        name = (
-            "TabDPT (KV-Cached)"
-            if use_kv_cache
-            else "TabDPT (Vanilla Full-Forward)"
-        )
+        name = "TabDPT (KV-Cached)" if use_kv_cache else "TabDPT (Vanilla Full-Forward)"
         family = (
             "Foundation Model (KV-Cache)"
             if use_kv_cache

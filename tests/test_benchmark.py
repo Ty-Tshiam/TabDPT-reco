@@ -21,7 +21,6 @@ from src.benchmark_model.metrics import (
     compute_recall_and_hit_rate_at_k,
 )
 from src.benchmark_model.models.real_mlp import RealMLPRecommender
-from src.benchmark_model.models.tabdpt_wrapper import TabDPTRecommender
 from src.benchmark_model.models.tree_models import (
     CatBoostRecommender,
     LightGBMRecommender,

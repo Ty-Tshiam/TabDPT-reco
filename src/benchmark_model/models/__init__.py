@@ -12,10 +12,10 @@ from src.benchmark_model.models.tree_models import (
 )
 
 __all__ = [
-    "RealMLPRecommender",
-    "LightGBMRecommender",
     "CatBoostRecommender",
+    "LightGBMRecommender",
+    "RealMLPRecommender",
+    "TabDPTKVCacheRecommender",
     "TabDPTRecommender",
     "TabDPTVanillaRecommender",
-    "TabDPTKVCacheRecommender",
 ]
