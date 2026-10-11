@@ -121,7 +121,9 @@ class TestMetrics:
         q_norm = np.array([0.1, 0.2, 0.3, 0.4])
         res_norm = compute_js_divergence(p_norm, q_norm)
         assert 0.0 < res_norm["js_divergence"] < 1.0
-        assert pytest.approx(res_norm["js_distance"], abs=1e-2) == np.sqrt(res_norm["js_divergence"])
+        assert pytest.approx(res_norm["js_distance"], abs=1e-2) == np.sqrt(
+            res_norm["js_divergence"]
+        )
 
     def test_compute_catalog_gini(self):
         catalog = ["prod_a", "prod_b", "prod_c", "prod_d"]
@@ -132,7 +134,9 @@ class TestMetrics:
             ["prod_a", "prod_c"],
             ["prod_b", "prod_d"],
         ]
-        assert compute_catalog_gini(uniform_recs, catalog) == pytest.approx(0.0, abs=1e-4)
+        assert compute_catalog_gini(uniform_recs, catalog) == pytest.approx(
+            0.0, abs=1e-4
+        )
 
         # Heavily concentrated / skewed on prod_a -> Gini close to maximum inequality (1 - 1/n)
         skewed_recs = [["prod_a"] for _ in range(100)]
