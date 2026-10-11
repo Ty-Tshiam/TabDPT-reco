@@ -745,7 +745,7 @@ def check_triton_status():
         if client.is_server_live() and client.is_model_ready("tabdpt"):
             return True, "Online & Ready (tabdpt v3)"
         return False, "Server reachable, model not ready"
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
         return False, f"Offline ({e.__class__.__name__})"
 
 

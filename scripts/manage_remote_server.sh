@@ -7,9 +7,28 @@ set -e
 
 ACTION="${1:-status}"
 SESSION_NAME="triton"
-REPO_DIR="/workspace/TabDPT-reco"
-LOG_FILE="/workspace/triton.log"
-PYTHON_BIN="/venv/main/bin/python"
+
+# Dynamically resolve repository directory and log location
+if [ -d "/workspace/TabDPT-reco" ]; then
+    REPO_DIR="/workspace/TabDPT-reco"
+    LOG_FILE="/workspace/triton.log"
+elif [ -d "$HOME/TabDPT-reco" ]; then
+    REPO_DIR="$HOME/TabDPT-reco"
+    LOG_FILE="$HOME/triton.log"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    LOG_FILE="$REPO_DIR/triton.log"
+fi
+
+# Dynamically resolve Python interpreter
+if [ -f "/venv/main/bin/python" ]; then
+    PYTHON_BIN="/venv/main/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+else
+    PYTHON_BIN="python"
+fi
 
 case "$ACTION" in
     status)
