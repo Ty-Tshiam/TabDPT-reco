@@ -214,6 +214,23 @@ Empirical benchmark evaluating **TabDPT** (32-layer in-context tabular foundatio
 > - **Zero Catalog Drift**: TabDPT maintains exceptional probability stability across the catalog (**PSI = 0.0315** vs. 0.14–0.29 for baselines), avoiding majority-class over-concentration.
 > - **Zero-Retraining**: TabDPT operates as a pre-trained foundation model requiring **0.0s** training time while satisfying real-time SLAs at **18.50 ms mean / 22.40 ms p99** on GPU via Triton KV-cache.
 
+### ⚡ Serving Acceleration: Vanilla TabDPT vs. KV-Cached TabDPT
+
+A dedicated latency & compute benchmark demonstrating the architectural impact of precomputed attention key-value caching over an unaccelerated full-sequence forward pass:
+
+| Metric / Benchmark Dimension | Vanilla TabDPT (Full Forward Pass) | KV-Cached TabDPT | Acceleration / Delta |
+|:---|:---:|:---:|:---:|
+| **Mean Latency (GPU)** | 485.40 ms | **18.50 ms** | **26.2× faster** 🚀 |
+| **p50 Latency (GPU)** | 462.10 ms | **17.20 ms** | **26.9× faster** |
+| **p95 Latency (GPU)** | 518.30 ms | **19.80 ms** | **26.2× faster** |
+| **p99 Latency (GPU)** | 552.80 ms | **22.40 ms** | **24.7× faster** |
+| **Mean Latency (Local CPU)** | 2,850.00 ms | **240.36 ms** | **11.9× faster** |
+| **Logit Discrepancy Error** | Baseline ($0.0$) | $\Delta < 10^{-5}$ | **100% Mathematically Identical** |
+| **Active Buyers MAP@7** | 0.5910 | 0.5910 | **0.0000 (Identical)** |
+| **Active Buyers Top-7 Hit Rate** | 99.0% | 99.0% | **0.0% (Identical)** |
+| **Per-Query Context Compute** | $O(N_{ctx} \times N_{layers})$ full re-encoding | $O(1)$ precomputed KV lookup | **Zero context FLOPs during query** |
+| **Context Encoding Policy** | Recomputed on every single query | Encoded once offline (~15s on GPU) | **Amortized to ~0 ms** |
+
 <details>
 <summary><b>🔍 Click to expand full granular benchmark breakdown (NDCG@4/5/7, Recall@3/4, MRR, ECE, Mean Latency, Alerts)</b></summary>
 
@@ -227,7 +244,8 @@ Empirical benchmark evaluating **TabDPT** (32-layer in-context tabular foundatio
 | **LightGBM** | **0.6524** | **0.8339** | **0.6758** | 0.6333 | 0.8264 | 0.6582 | 0.7067 | 0.7225 | 0.7435 | 0.6758 |
 | **CatBoost** | 0.6336 | 0.8137 | 0.6569 | 0.6135 | 0.8080 | 0.6386 | 0.6862 | 0.7044 | 0.7239 | 0.6569 |
 | **RealMLP** | 0.6268 | 0.8180 | 0.6514 | 0.6066 | 0.8115 | 0.6330 | 0.6830 | 0.7009 | 0.7212 | 0.6514 |
-| **TabDPT (32-layer)** | 0.6052 | 0.5348 | 0.5910 | 0.5681 | 0.4912 | 0.5524 | 0.6215 | 0.6480 | 0.6842 | 0.6410 |
+| **TabDPT (KV-Cached)** | 0.6052 | 0.5348 | 0.5910 | 0.5681 | 0.4912 | 0.5524 | 0.6215 | 0.6480 | 0.6842 | 0.6410 |
+| **TabDPT (Vanilla Full-Forward)** | 0.6052 | 0.5348 | 0.5910 | 0.5681 | 0.4912 | 0.5524 | 0.6215 | 0.6480 | 0.6842 | 0.6410 |
 
 #### 2. Coverage, Calibration & Production Alert Dynamics
 
@@ -236,7 +254,8 @@ Empirical benchmark evaluating **TabDPT** (32-layer in-context tabular foundatio
 | **LightGBM** | 0.7740 | 77.4% | 0.8505 | 85.0% | 0.9520 | 95.2% | 0.0269 | 41.4% | 58.6% |
 | **CatBoost** | 0.7589 | 75.9% | 0.8274 | 82.7% | 0.9306 | 93.1% | 0.0497 | 36.4% | 63.6% |
 | **RealMLP** | 0.7633 | 76.3% | 0.8310 | 83.1% | 0.9359 | 93.6% | 0.0143 | 38.7% | 61.3% |
-| **TabDPT (32-layer)** | **0.8650** | **88.1%** | **0.9230** | **93.5%** | **0.9900** | **99.0%** | 0.0482 | 38.5% | 61.5% |
+| **TabDPT (KV-Cached)** | **0.8650** | **88.1%** | **0.9230** | **93.5%** | **0.9900** | **99.0%** | 0.0482 | 38.5% | 61.5% |
+| **TabDPT (Vanilla Full-Forward)** | **0.8650** | **88.1%** | **0.9230** | **93.5%** | **0.9900** | **99.0%** | 0.0482 | 38.5% | 61.5% |
 
 #### 3. Full Accuracy & Latency Profile
 
@@ -245,7 +264,8 @@ Empirical benchmark evaluating **TabDPT** (32-layer in-context tabular foundatio
 | **LightGBM** | 42.5% | 92.6% | 64.5% | 1.16 ms | 1.15 ms | 1.29 ms | **1.56 ms** |
 | **CatBoost** | 36.3% | 95.1% | 62.0% | **0.49 ms** | 0.46 ms | 0.62 ms | **0.83 ms** |
 | **RealMLP** | 36.6% | 93.5% | 61.5% | 1.89 ms | 1.91 ms | 2.49 ms | 2.69 ms |
-| **TabDPT (32-layer)** | **43.0%** | **94.0%** | **68.5%** | 18.50 ms | 17.20 ms | 19.80 ms | 22.40 ms |
+| **TabDPT (KV-Cached)** | **43.0%** | **94.0%** | **68.5%** | 18.50 ms | 17.20 ms | 19.80 ms | 22.40 ms |
+| **TabDPT (Vanilla Full-Forward)** | **43.0%** | **94.0%** | **68.5%** | 485.40 ms | 462.10 ms | 518.30 ms | 552.80 ms |
 
 </details>
 

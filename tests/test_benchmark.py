@@ -183,12 +183,23 @@ class TestModels:
         assert np.allclose(np.sum(probs, axis=1), 1.0, atol=1e-4)
 
     def test_tabdpt_wrapper_smoke(self, synthetic_data):
+        from src.benchmark_model.models.tabdpt_wrapper import (
+            TabDPTKVCacheRecommender,
+            TabDPTVanillaRecommender,
+        )
+
         X, y = synthetic_data
-        model = TabDPTRecommender()
-        model.fit(X, y)
-        probs = model.predict_proba(X[:5])
-        assert probs.shape == (5, 16)
-        assert np.allclose(np.sum(probs, axis=1), 1.0, atol=1e-4)
+        kv_model = TabDPTKVCacheRecommender()
+        kv_model.fit(X, y)
+        probs_kv = kv_model.predict_proba(X[:5])
+        assert probs_kv.shape == (5, 16)
+        assert np.allclose(np.sum(probs_kv, axis=1), 1.0, atol=1e-4)
+
+        vanilla_model = TabDPTVanillaRecommender()
+        vanilla_model.fit(X, y)
+        probs_vanilla = vanilla_model.predict_proba(X[:5])
+        assert probs_vanilla.shape == (5, 16)
+        assert np.allclose(np.sum(probs_vanilla, axis=1), 1.0, atol=1e-4)
 
 
 class TestDataLoader:
