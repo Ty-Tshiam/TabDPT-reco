@@ -43,6 +43,8 @@ METADATA_DIR = DATA_DIR / "metadata"
 CATEGORICAL_MAPPINGS_JSON = METADATA_DIR / "categorical_mappings.json"
 NORMALIZATION_STATS_JSON = METADATA_DIR / "normalization_stats.json"
 PROVINCE_MEDIANS_JSON = METADATA_DIR / "province_median_incomes.json"
+LGBM_GATEKEEPER_PATH = METADATA_DIR / "lgbm_gatekeeper.pkl"
+LGBM_GATEKEEPER_TXT = METADATA_DIR / "lgbm_gatekeeper.txt"
 
 # 4. Final Tensors for TabDPT Model Training & Evaluation
 TENSORS_DIR = DATA_DIR / "tensors"

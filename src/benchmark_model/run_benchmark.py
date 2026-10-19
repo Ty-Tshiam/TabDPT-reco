@@ -12,9 +12,16 @@ Usage:
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
+
 import numpy as np
+
+# Ensure UTF-8 stdout encoding on Windows consoles
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -23,10 +30,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.benchmark_model.data_loader import prepare_benchmark_datasets
 from src.benchmark_model.evaluator import BenchmarkEvaluator
+from src.benchmark_model.mlflow_logger import (
+    log_model_run_to_mlflow,
+    register_benchmark_models,
+    setup_mlflow,
+)
 from src.benchmark_model.models.real_mlp import RealMLPRecommender
 from src.benchmark_model.models.tabdpt_wrapper import (
     TabDPTKVCacheRecommender,
-    TabDPTRecommender,
     TabDPTVanillaRecommender,
 )
 from src.benchmark_model.models.tree_models import (
@@ -244,6 +255,11 @@ def main():
         default=str(DATA_DIR / "benchmark_output"),
         help="Directory to save benchmark reports and JSON",
     )
+    parser.add_argument(
+        "--no-mlflow",
+        action="store_true",
+        help="Disable logging runs to MLflow (enabled by default)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -255,14 +271,14 @@ def main():
 
     # 1. Load Data
     print(
-        f"\n[1/3] Loading dataset and partitioning test cohort (eval samples: {args.eval_samples})..."
+        f"\n[1/4] Loading dataset and partitioning test cohort (eval samples: {args.eval_samples})..."
     )
     X_train, y_train, test_cohort = prepare_benchmark_datasets(
         train_ratio=args.train_ratio,
         eval_sample_size=args.eval_samples,
     )
     print(
-        f"[1/3] Train set: {X_train.shape[0]} rows x {X_train.shape[1]} features | "
+        f"[1/4] Train set: {X_train.shape[0]} rows x {X_train.shape[1]} features | "
         f"Test cohort: {test_cohort.X.shape[0]} rows (Cold: {np.sum(test_cohort.is_cold)}, Warm: {np.sum(~test_cohort.is_cold)})"
     )
 
@@ -288,30 +304,51 @@ def main():
         model_instances.append(TabDPTVanillaRecommender())
 
     # 3. Evaluate Models
-    print(f"\n[2/3] Executing benchmark across {len(model_instances)} models...")
+    print(f"\n[2/4] Executing benchmark across {len(model_instances)} models...")
     evaluator = BenchmarkEvaluator(model_instances)
     results = evaluator.evaluate(X_train, y_train, test_cohort, latency_samples=50)
 
-    # 4. Generate Reports
-    print("\n[3/3] Generating README Markdown tables & JSON records...")
+    # 4. Log Experiments and Register Models with MLflow
+    if not args.no_mlflow:
+        print("\n[3/4] Logging benchmark runs and registering models to MLflow...")
+        try:
+            setup_mlflow()
+            for r in results:
+                run_id = log_model_run_to_mlflow(r)
+                r["mlflow_run_id"] = run_id
+                print(f"      - Logged {r['model_name']} (Run ID: {run_id})")
+
+            versions = register_benchmark_models(results)
+            if "champion" in versions:
+                print(f"      [Model Registry] Registered Champion (TabDPT) Version {versions['champion']}!")
+            if "challenger" in versions:
+                print(f"      [Model Registry] Registered Challenger (LightGBM) Version {versions['challenger']}!")
+        except Exception as e:  # noqa: BLE001
+            print(f"      [Warning] MLflow logging encountered an error: {e}")
+
+    # 5. Generate Reports
+    print("\n[4/4] Generating README Markdown tables & JSON records...")
     readme_content = format_readme_tables(results)
 
     # Save Markdown
     readme_path = output_dir / "benchmark_readme.md"
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(readme_content)
-    print(f"[3/3] Wrote README report to: {readme_path}")
+    print(f"[4/4] Wrote README report to: {readme_path}")
 
     # Save JSON
     json_path = output_dir / "benchmark_results.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
-    print(f"[3/3] Wrote JSON artifacts to: {json_path}")
+    print(f"[4/4] Wrote JSON artifacts to: {json_path}")
 
     print("\n" + "=" * 80)
     print(" BENCHMARK RESULTS (README.MD FORMAT)")
     print("=" * 80 + "\n")
-    print(readme_content)
+    try:
+        print(readme_content)
+    except UnicodeEncodeError:
+        print(readme_content.encode("ascii", errors="replace").decode("ascii"))
 
 
 if __name__ == "__main__":

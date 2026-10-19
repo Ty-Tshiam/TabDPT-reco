@@ -40,3 +40,7 @@ data/tensors/context_kv_cache.pt
 
 model_repo/tabdpt/3/model.pt
 catboost_info/
+
+# MLflow Tracking & Registry
+mlruns/
+mlflow.db
