@@ -308,7 +308,9 @@ CONSUMER_GROUP = "reco_workers"
 # Key Prefixes & TTLs
 KEY_CUSTOMER_STATE = "customer:{customer_id}:state"
 KEY_CUSTOMER_RECS = "recs:{customer_id}"
+KEY_CUSTOMER_FEATURES = "feature_store:customer:{customer_id}"
 RECS_TTL_SECONDS = 3600  # 1 hour cache
+FEATURE_STORE_TTL_SECONDS = int(os.getenv("FEATURE_STORE_TTL_SECONDS", str(30 * 86400)))  # 30 days
 
 # ==============================================================================
 # Action-to-Product Relevance Mapping (Next Best Action Matrix)

@@ -72,6 +72,13 @@ classes = INDEX_TO_TARGET
 
 r = get_redis_client()
 try:
+    from src.features.feature_store import RedisFeatureStore
+except ImportError:
+    from features.feature_store import RedisFeatureStore
+
+feature_store = RedisFeatureStore(redis_client=r)
+
+try:
     r.xgroup_create(STREAM_CUSTOMER_EVENTS, CONSUMER_GROUP, id="0", mkstream=True)
 except Exception as e:  # noqa: RUF100
     if "BUSYGROUP" not in str(e):
@@ -526,48 +533,14 @@ if __name__ == "__main__":
                             f"[Worker] Received msg {msg_id} for customer {customer_id}: action={action}"
                         )
 
-                        print(f"[Worker] Fetching data for customer: {customer_id}...")
-                        customer_info = get_customer(customer_id, df)
-
-                        # Pull complete available customer history
-                        customer_history = get_customer_history(customer_id, history)
+                        t_feat_start = time.time()
+                        print(f"[Worker] Fetching features from Redis Feature Store for customer: {customer_id}...")
+                        x_qry, held, metadata = feature_store.get_customer_features(
+                            customer_id, enable_fallback=True
+                        )
+                        feat_time_ms = (time.time() - t_feat_start) * 1000
                         print(
-                            f"[Worker] Pulled {customer_history.height} historical snapshots (Total with test: {customer_history.height + customer_info.height})"
-                        )
-
-                        customer = pl.concat(
-                            [customer_info, customer_history], how="vertical"
-                        )
-
-                        engineered_customer = feature_engineering_pipeline(customer)
-                        feature_cols = [
-                            c
-                            for c in engineered_customer.columns
-                            if c not in ["customer_id", "snapshot_date"]
-                        ]
-                        print(
-                            f"[Worker] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})"
-                        )
-
-                        held = get_already_held_mask(engineered_customer)
-                        print(f"[Worker] Got mask {held}")
-
-                        processed_customer = encode_and_normalize(engineered_customer)
-                        query = (
-                            processed_customer.drop("customer_id", "snapshot_date")
-                            .to_torch()
-                            .to(torch.float32)
-                        )
-                        print("[Worker] Processed customer info")
-
-                        x_qry = (
-                            prepare_query(query.to(device, dtype=dtype))
-                            .to(torch.float32)
-                            .cpu()
-                            .numpy()
-                        )
-                        print(
-                            f"[Worker] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}"
+                            f"[Worker] Retrieved features in {feat_time_ms:.2f}ms (Held: {held}, Shape: {x_qry.shape})"
                         )
 
                         target_matches = get_customer_targets(customer_id).to_dicts()
@@ -604,6 +577,10 @@ if __name__ == "__main__":
                             "timestamp": update_time,
                         }
                         publish_reco(stream_payload)
+
+                        if action in ("claim_offer", "product_acquired"):
+                            updated_held = feature_store.update_held_products(customer_id, top_product)
+                            print(f"[Worker] Updated held products in Redis for customer {customer_id}: {updated_held}")
 
                         if relavant:
                             print(

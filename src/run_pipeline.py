@@ -45,7 +45,7 @@ Stages:
     )
     parser.add_argument(
         "--stage",
-        choices=["1", "2", "3", "all"],
+        choices=["1", "2", "3", "sync-redis", "all"],
         default="all",
         help="Pipeline stage to execute (default: all)",
     )
@@ -81,6 +81,16 @@ def main():
         t0 = time.time()
         run_stage3()
         print(f">>> Stage 3 Finished in {time.time() - t0:.1f}s")
+
+    if args.stage in ("sync-redis",):
+        print("\n>>> Launching Feature Store Sync to Redis...")
+        t0 = time.time()
+        from scripts.sync_features_to_redis import sync_archetypes
+        from src.features.feature_store import RedisFeatureStore
+
+        fs = RedisFeatureStore()
+        sync_archetypes(fs)
+        print(f">>> Redis Sync Finished in {time.time() - t0:.1f}s")
 
     elapsed = time.time() - start_time
     print("\n" + "=" * 70)

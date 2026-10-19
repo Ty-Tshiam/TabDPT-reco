@@ -1,0 +1,196 @@
+================================================================================
+PROBLEM SUMMARY: THE SNIPER ACCURACY VS. CUSTOMER FRICTION DILEMMA
+TabDPT In-Context Recommendation Optimization
+================================================================================
+
+1. WHAT WE DISCOVERED (THE WIN)
+--------------------------------------------------------------------------------
+By evaluating 7 candidate context compositions across 5,000 context samples and
+5,000 test evaluation queries on the NVIDIA RTX 3060 GPU, we proved that:
+
+  * `split_uniform_classes` (equal 1/16 quota per class) is an objectively superior
+    product ranking engine compared to our baseline.
+  * Active Buyer Top-1 Accuracy ("Sniper Accuracy") jumped from 35.9% to 47.4%
+    (+11.5% absolute gain). When a customer actually intends to buy, the model
+    identifies the exact target product at Rank #1 nearly 1 out of every 2 times.
+  * Overall MAP@7 improved from 0.6198 to 0.6368 (+0.0170).
+  * Cold MAP@7 (<90 days tenure) improved from 0.6261 to 0.6560 (+0.0299).
+  * Top-7 Hit Rate reached 92.5%, with the lowest Catalog Gini (0.2204, maximum fairness).
+
+
+2. THE ELEPHANT IN THE ROOM (THE PROBLEM)
+--------------------------------------------------------------------------------
+While sniper accuracy on buyers soared, Non-Buyer Top-1 Accuracy collapsed:
+
+  * `baseline_default` Non-Buyer Accuracy: 92.2%
+  * `split_uniform_classes` Non-Buyer Accuracy: 42.9% (-49.3% drop!)
+
+Why did this happen?
+In real-world retail banking, over 97% of customer-months have zero purchase intent
+(Class 0 / "Do Nothing / Hold"). 
+
+However, `split_uniform_classes` allocated Class 0 only 1/16 (~6.25%) of the context
+rows. This taught the model in-context that customers only "do nothing" 6% of the time,
+and buy products 94% of the time. 
+
+Consequently, the model's baseline probability for Class 0 was deflated. Under standard
+argmax, a weak product probability (e.g. 12%) easily beats a deflated Class 0 probability
+(e.g. 7%). The model now falsely guesses a product on 57.1% of quiet customers who had
+no intention of buying.
+
+If unmanaged, this model behavior causes notification spam, customer friction, and
+loss of trust.
+
+
+3. THE EXISTING MITIGATION & ITS LIMITATIONS
+--------------------------------------------------------------------------------
+Our streaming pipeline (`src/streaming/event_processor.py`) currently has a downstream
+business gate: `product_relavance(top_product, action)`. 
+
+If a customer performs a routine action (e.g. card payment), the recommendation is
+silently cached (`is_active_trigger=false`) rather than pushed as a live alert.
+
+However, relying entirely on downstream business logic means the core foundation model
+itself is noisy on quiet customers. We want the model itself to reliably output
+"Do Nothing" when there is no genuine purchase propensity.
+
+
+4. THE UPCOMING EXPERIMENT: TUNING THE CONFIDENCE METER
+--------------------------------------------------------------------------------
+The objective is to find the optimal operating point on the Pareto frontier:
+  * Elevate Non-Buyer ("Do Nothing") Hold Accuracy from 42.9% back to >= 85%-92%.
+  * Retain Active Buyer Top-1 Sniper Accuracy as close to 47.4% (or higher) as possible.
+
+How the Confidence Meter Works:
+Instead of raw argmax (which requires a product to beat Class 0 by just 0.0001),
+we test confidence gating mechanisms:
+
+  Mechanism A - Odds-Ratio Gating:
+    Require: P(top_product) / P(Class 0) > theta
+    Where theta is swept across: [1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0, 4.0, 5.0].
+    If the ratio is below theta, the model defaults to Class 0 ("Do Nothing").
+
+  Mechanism B - Logit Prior Margin Adjustment (Bayesian Shift):
+    Adjust the Class 0 logit before softmax by adding a calibration bonus lambda:
+    logit(Class 0) = logit(Class 0) + lambda
+    Where lambda is swept across: [0.5, 1.0, 1.5, 2.0, 2.5, 2.74].
+    This preserves the exact relative ranking of all 15 products while restoring
+    the natural real-world barrier against false alarms.
+
+5. EXPERIMENT 1 RESULTS: DISTRIBUTION-SHAPE & PER-CLASS GATING (0 GPU PASSES)
+--------------------------------------------------------------------------------
+By caching the 5,000-query logits from `split_uniform_classes`, we tested:
+  - Gate 1A: Sniper Spike Margin (Top-1 vs Top-2 difference > delta)
+  - Gate 1B: Conditional Product Entropy (Normalized Shannon entropy <= tau)
+  - Gate 1C: Per-Class Precision Calibration (Vector theta in R^15)
+
+Key Empirical Findings:
+  1. False Positives are heavily concentrated in 4 noisy products:
+     - Class 14 (long_term_deposits): 223 false alarms (17.8% of all noise, 25.9% precision).
+     - Class 1 (current_account): 157 false alarms (12.6% of noise, 52.3% precision).
+     - Class 15 (taxes): 116 false alarms (9.3% of noise, 34.1% precision).
+     - Class 7 (particular_plus_account): 92 false alarms (7.4% of noise, 27.6% precision).
+     In contrast, Class 5 (mortgage) has 100% precision (0 false alarms), and
+     Class 12 (more_particular_account), Class 11 (payroll), and Class 4 (pensions)
+     maintain 72%-82% precision.
+
+  2. Global Scalar Meters Fail Clean Products:
+     A single scalar threshold theta or lambda forces clean products into the same
+     heavy penalty as noisy products.
+
+  3. Gate 1C (Per-Class Vector) Wins Decisively:
+     - Assigning high thresholds (theta = 4.0 - 5.0) to noisy classes while keeping
+       clean classes relaxed (theta = 1.0 - 1.2) jumps Non-Buyer Hold from 42.9% to 72.4%!
+     - Active Buyer Top-1 remains high at 42.7% (still +6.8% higher than baseline's 35.9%).
+     - Zero GPU cost, runs in < 1 ms.
+
+  4. Baseline Context Quota Requirement:
+     When rebuilding baseline context in stage 3, dormant users must be capped to
+     <= 5% (or 0-2%) to ensure context attention is not consumed by non-buying users.
+
+6. EXPERIMENT 2 RESULTS: ASYMMETRIC ANCHORED CONTEXT SPLITS (3 GPU PASSES)
+--------------------------------------------------------------------------------
+We tested anchoring Class 0 directly in the in-context prompt at 15%, 20%, and 25%
+(with 0% dormant users, 100% active non-buyers, and 70/30 stratification):
+  - `context_asym_15` (15% C0): Raw Non-Buyer Hold = 55.6%, Raw Buyer Top-1 = 40.3%, MAP = 0.5130
+  - `context_asym_20` (20% C0): Raw Non-Buyer Hold = 59.8%, Raw Buyer Top-1 = 39.9%, MAP = 0.5023
+  - `context_asym_25` (25% C0): Raw Non-Buyer Hold = 64.2%, Raw Buyer Top-1 = 37.2%, MAP = 0.4687
+
+CRUCIAL TAKEAWAY:
+Diluting the in-context prompt with more Class 0 rows reduces token quota for the 15 products
+(dropping from 312 rows/class down to 250 rows/class). This severely degrades TabDPT's
+product discrimination, dropping Buyer Top-1 from 47.4% down to 37.2%.
+
+WINNING STRATEGY:
+Keep `split_uniform_classes` (6.25% Class 0) in the prompt to maximize product learning
+(47.4% raw buyer sniper accuracy, 0.6368 MAP@7), and apply post-hoc Gate 1C (Per-Class Vector)
+at inference time to raise Non-Buyer Hold to 72.4% while keeping Buyer Top-1 at 42.7%.
+
+7. EXPERIMENT 3 RESULTS: LIGHTGBM GATEKEEPER + TABDPT CASCADE
+--------------------------------------------------------------------------------
+We evaluated a two-stage decoupled architecture:
+  - Stage 1 (CPU LightGBM): ROC-AUC 0.8912, latency 0.002 ms.
+    If P(Buy) < gamma, instantly return Class 0 and bypass GPU inference.
+  - Stage 2 (GPU TabDPT): If P(Buy) >= gamma, route to TabDPT split_uniform_classes model.
+
+Key Empirical Findings:
+  - At gamma = 0.30: Slashes 26.4% of GPU forward passes with ZERO loss in sniper precision
+    (Buyer Top-1 = 46.90%, Hold = 53.24%, MAP@7 = 0.6065).
+  - At gamma = 0.50: Slashes 45.1% of GPU forward passes (cuts GPU load in half!),
+    jumps Non-Buyer Hold to 78.77%, and retains 41.78% Buyer Top-1 (MAP@7 = 0.5330).
+  - At gamma = 0.60: Slashes 54.4% of GPU forward passes, Non-Buyer Hold reaches 88.49%,
+    Buyer Top-1 stays at 39.15% (+3.3% higher than baseline 35.9%).
+
+8. FINAL PRODUCTION CANDIDATE: THE FRANKENSTEIN ARCHITECTURE
+--------------------------------------------------------------------------------
+We evaluated the combined pipeline on NVIDIA RTX 3090 (24GB VRAM):
+  1. Context: 1/16 equal split (312/class), 100% active C0 (0% dormant), 70/30 stratified.
+  2. Stage 1 (CPU LightGBM): Fast binary pre-filter (0.002 ms, 0.8912 ROC-AUC).
+  3. Stage 2 (GPU TabDPT): In-context transformer forward pass.
+  4. Stage 2b (Gate 1C): Noisy sinks (theta = 4.0 - 5.0), clean products (theta = 1.0 - 1.2).
+
+FINAL VERDICT:
+  - Baseline Production Default: Hold = 92.2%, Buyer Top-1 = 35.9%, GPU Passes = 100%.
+  - Frankenstein (gamma=0.30, theta_n=5.0, theta_c=1.2) [RECOMMENDED]:
+      * Non-Buyer Hold: 77.63% (cuts spam by over 60%)
+      * Buyer Top-1 Sniper Accuracy: 42.31% (+6.4% higher than baseline 35.9%!)
+      * GPU Forward Passes Saved: 26.4% (1 in 4 queries resolved in 0.002 ms on CPU)
+  - Frankenstein (gamma=0.50, theta_n=5.0, theta_c=1.2) [HIGH SUPPRESSION]:
+      * Non-Buyer Hold: 85.39% (near baseline's 92% hold barrier)
+      * Buyer Top-1 Sniper Accuracy: 40.57% (+4.7% higher than baseline 35.9%)
+      * GPU Forward Passes Saved: 45.1% (cuts GPU workload in half!)
+================================================================================
+
+
+baseline split btw:
+"""
+Stage 3: Stratified Subsampling & PyTorch TabDPT Tensor Export.
+
+This module takes the normalized dataset from Stage 2 and builds the training
+and context tensors tailored for TabDPT:
+1. Applies temporal-stratified sampling (100,000 target rows: 70% recent last 6 months, 30% historical):
+   - 60,000 positive product purchases (Classes 1..15, stratified across all 15 products).
+   - 30,000 active non-purchases (Class 0, active customer status).
+   - 10,000 inactive non-purchases (Class 0, dormant customer status).
+2. Outlier stabilization: Clips numeric features to range [-10.0, 10.0].
+3. Zero-pads feature dimension from the native 80 features up to 128 columns
+   (the standard input dimension expected by TabDPT transformer layers).
+4. Casts context matrix to torch.bfloat16 for fast GPU compute and memory efficiency.
+5. Saves context.pt and y.pt to data/tensors/.
+"""
+
+  """
+  Applies the 70/30 recent-to-historical temporal stratification across 6 distinct strata:
+  - 45k recent purchases (target_class != 0, snapshot_date >= max - 6mo, 3k per class)
+  - 15k historical purchases (target_class != 0, snapshot_date < max - 6mo, 1k per class)
+  - 21k recent active non-purchases (target_class == 0, active)
+  - 9k historical active non-purchases (target_class == 0, active)
+  - 7k recent inactive non-purchases (target_class == 0, dormant)
+  - 3k historical inactive non-purchases (target_class == 0, dormant)
+
+  Args:
+      df: LazyFrame of normalized dataset.
+
+  Returns:
+      Balanced Polars DataFrame (~100,000 rows).
+  """

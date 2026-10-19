@@ -12,10 +12,16 @@ The system scales from raw multi-year transactional banking data (~2.4 GB) to lo
 flowchart TD
     subgraph Offline["Offline Data & Tensor Pipeline"]
         direction TB
-        raw["data/raw/train_ver2.csv"] --> S1["Stage 1: PySpark Feature Engineering<br/>(80 lag1/lag2 holdings, deltas, bundles, seasonality)"]
-        S1 --> S2["Stage 2: Polars Categorical Encoding & Normalization"]
+        raw["data/raw/train_ver2.csv"] --> S1["Stage 1: Polars Feature Engineering<br/>(80 lag1/lag2 holdings, deltas, bundles, seasonality)"]
+        S1 --> S2["Stage 2: Categorical Encoding & Normalization"]
         S2 --> S3["Stage 3: Stratified Subsampling & Padding to 128-dim"]
         S3 --> Tensors["data/tensors/context.pt & KV-Cache"]
+        S2 --> SyncFS["Feature Store Sync<br/>(scripts/sync_features_to_redis.py)"]
+    end
+
+    subgraph Store["Online Feature Store (Redis)"]
+        direction TB
+        SyncFS --> RedisFS[("Redis Feature Store<br/>customer:{id}:features<br/>512B FP32 Vectors & Holdings<br/>Latency: < 0.1ms")]
     end
 
     subgraph Serving["High-Throughput Model Serving"]
@@ -28,8 +34,9 @@ flowchart TD
         direction TB
         UI_Action["Customer Event Trigger<br/>(e.g. Salary Deposit, Large Wire, Branch Inquiry)"] -->|XADD| StreamIn[("stream:customer_events")]
         StreamIn -->|XREADGROUP| Worker["Streaming Worker<br/>(src/streaming/event_processor.py)"]
-        Worker -->|QUERY_FEATURES: 1x1x128| Triton
-        Triton -->|PROBABILITIES: 1x16| Worker
+        Worker -->|1. Fast Point Lookup < 0.1ms| RedisFS
+        Worker -->|2. QUERY_FEATURES: 1x1x128| Triton
+        Triton -->|3. PROBABILITIES: 1x16| Worker
         Worker --> NBA{"Next-Best-Action Filter<br/>Match Trigger Intent?"}
         NBA -->|Active Match| StreamOut[("stream:recommendations<br/>(Active Push Alert)")]
         NBA -->|Passive Update| Cache[("recs:{customer_id}<br/>(Silent Recalibration)")]
@@ -106,9 +113,10 @@ If regenerating parquet partitions and PyTorch tensors from raw data:
 python src/run_pipeline.py --stage all
 
 # Or run individual stages:
-python src/run_pipeline.py --stage 1  # PySpark cleaning & feature engineering
-python src/run_pipeline.py --stage 2  # Categorical encoding & normalization
-python src/run_pipeline.py --stage 3  # Stratified subsampling & 128-dim tensor export
+python src/run_pipeline.py --stage 1          # Polars cleaning & feature engineering
+python src/run_pipeline.py --stage 2          # Categorical encoding & normalization
+python src/run_pipeline.py --stage 3          # Stratified subsampling & 128-dim tensor export
+python src/run_pipeline.py --stage sync-redis # Materialize customer features into Redis Feature Store
 ```
 
 ### 3. Launching the Real-Time Stack

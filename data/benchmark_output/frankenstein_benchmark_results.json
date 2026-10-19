@@ -1,0 +1,246 @@
+{
+  "architecture": "Frankenstein Production Architecture",
+  "audit": {
+    "do_nothing": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94,
+      "dormant": 0
+    },
+    "current_account": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "payroll_account": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "credit_card": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "pensions": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "mortgage": {
+      "total": 313,
+      "recent": 23,
+      "historical": 290
+    },
+    "securities": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "particular_plus_account": {
+      "total": 313,
+      "recent": 219,
+      "historical": 94
+    },
+    "particular_account": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "funds": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "direct_debit": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "payroll": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "more_particular_account": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "e_account": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "long_term_deposits": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    },
+    "taxes": {
+      "total": 312,
+      "recent": 218,
+      "historical": 94
+    }
+  },
+  "lgbm_stats": {
+    "roc_auc": 0.8911829083995515,
+    "pr_auc": 0.9189022954585613,
+    "latency_ms": 0.003341531753540039
+  },
+  "gpu_infer_time_s": 1.5902378559112549,
+  "benchmark_evals": [
+    {
+      "buyer_top1_acc": 46.73,
+      "non_buyer_top1_acc": 36.48,
+      "overall_top1_acc": 42.24,
+      "alert_fired_pct": 80.0,
+      "map7": 0.5971,
+      "cold_map7": 0.6049,
+      "warm_map7": 0.5952,
+      "ndcg7": 0.6604,
+      "mrr": 0.5971,
+      "hit_rate7": 85.7,
+      "recall7": 0.8566,
+      "gamma": null,
+      "theta_noisy": 1.0,
+      "theta_clean": 1.0,
+      "gpu_passes_saved_pct": 0.0,
+      "gate_pass_rate_pct": 100.0,
+      "config_label": "Raw Argmax (No Gate, No LGBM)"
+    },
+    {
+      "buyer_top1_acc": 44.02,
+      "non_buyer_top1_acc": 50.87,
+      "overall_top1_acc": 47.02,
+      "alert_fired_pct": 67.8,
+      "map7": 0.5501,
+      "cold_map7": 0.5697,
+      "warm_map7": 0.5452,
+      "ndcg7": 0.6031,
+      "mrr": 0.5501,
+      "hit_rate7": 76.7,
+      "recall7": 0.7669,
+      "gamma": null,
+      "theta_noisy": 4.0,
+      "theta_clean": 1.0,
+      "gpu_passes_saved_pct": 0.0,
+      "gate_pass_rate_pct": 100.0,
+      "config_label": "Pure Gate 1C (No LGBM, theta_n=4.0, theta_c=1.0)"
+    },
+    {
+      "buyer_top1_acc": 43.24,
+      "non_buyer_top1_acc": 54.84,
+      "overall_top1_acc": 48.32,
+      "alert_fired_pct": 64.8,
+      "map7": 0.538,
+      "cold_map7": 0.5544,
+      "warm_map7": 0.5339,
+      "ndcg7": 0.5888,
+      "mrr": 0.538,
+      "hit_rate7": 74.6,
+      "recall7": 0.7459,
+      "gamma": null,
+      "theta_noisy": 5.0,
+      "theta_clean": 1.2,
+      "gpu_passes_saved_pct": 0.0,
+      "gate_pass_rate_pct": 100.0,
+      "config_label": "Pure Gate 1C (No LGBM, theta_n=5.0, theta_c=1.2)"
+    },
+    {
+      "buyer_top1_acc": 43.06,
+      "non_buyer_top1_acc": 74.89,
+      "overall_top1_acc": 57.0,
+      "alert_fired_pct": 56.0,
+      "map7": 0.5363,
+      "cold_map7": 0.5565,
+      "warm_map7": 0.5313,
+      "ndcg7": 0.5875,
+      "mrr": 0.5363,
+      "hit_rate7": 74.6,
+      "recall7": 0.7459,
+      "gamma": 0.3,
+      "theta_noisy": 4.0,
+      "theta_clean": 1.0,
+      "gpu_passes_saved_pct": 26.4,
+      "gate_pass_rate_pct": 73.6,
+      "config_label": "Frankenstein (gamma=0.30, theta_n=4.0, theta_c=1.0)"
+    },
+    {
+      "buyer_top1_acc": 42.31,
+      "non_buyer_top1_acc": 77.63,
+      "overall_top1_acc": 57.78,
+      "alert_fired_pct": 53.6,
+      "map7": 0.5249,
+      "cold_map7": 0.5412,
+      "warm_map7": 0.5208,
+      "ndcg7": 0.5741,
+      "mrr": 0.5249,
+      "hit_rate7": 72.6,
+      "recall7": 0.7263,
+      "gamma": 0.3,
+      "theta_noisy": 5.0,
+      "theta_clean": 1.2,
+      "gpu_passes_saved_pct": 26.4,
+      "gate_pass_rate_pct": 73.6,
+      "config_label": "Frankenstein (gamma=0.30, theta_n=5.0, theta_c=1.2)"
+    },
+    {
+      "buyer_top1_acc": 40.96,
+      "non_buyer_top1_acc": 84.47,
+      "overall_top1_acc": 60.02,
+      "alert_fired_pct": 49.1,
+      "map7": 0.507,
+      "cold_map7": 0.5259,
+      "warm_map7": 0.5022,
+      "ndcg7": 0.5543,
+      "mrr": 0.507,
+      "hit_rate7": 70.1,
+      "recall7": 0.7007,
+      "gamma": 0.5,
+      "theta_noisy": 4.0,
+      "theta_clean": 1.0,
+      "gpu_passes_saved_pct": 45.1,
+      "gate_pass_rate_pct": 54.9,
+      "config_label": "Frankenstein (gamma=0.50, theta_n=4.0, theta_c=1.0)"
+    },
+    {
+      "buyer_top1_acc": 40.57,
+      "non_buyer_top1_acc": 85.39,
+      "overall_top1_acc": 60.2,
+      "alert_fired_pct": 47.9,
+      "map7": 0.5006,
+      "cold_map7": 0.5182,
+      "warm_map7": 0.4962,
+      "ndcg7": 0.5467,
+      "mrr": 0.5006,
+      "hit_rate7": 68.9,
+      "recall7": 0.6893,
+      "gamma": 0.5,
+      "theta_noisy": 5.0,
+      "theta_clean": 1.2,
+      "gpu_passes_saved_pct": 45.1,
+      "gate_pass_rate_pct": 54.9,
+      "config_label": "Frankenstein (gamma=0.50, theta_n=5.0, theta_c=1.2)"
+    },
+    {
+      "buyer_top1_acc": 38.93,
+      "non_buyer_top1_acc": 90.0,
+      "overall_top1_acc": 61.3,
+      "alert_fired_pct": 43.3,
+      "map7": 0.4763,
+      "cold_map7": 0.4956,
+      "warm_map7": 0.4715,
+      "ndcg7": 0.5177,
+      "mrr": 0.4763,
+      "hit_rate7": 64.6,
+      "recall7": 0.6456,
+      "gamma": 0.6,
+      "theta_noisy": 5.0,
+      "theta_clean": 1.2,
+      "gpu_passes_saved_pct": 54.4,
+      "gate_pass_rate_pct": 45.6,
+      "config_label": "Frankenstein (gamma=0.60, theta_n=5.0, theta_c=1.2)"
+    }
+  ]
+}

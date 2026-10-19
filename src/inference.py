@@ -34,6 +34,7 @@ try:
         SELECTED_15_TARGETS,
         TEST_TARGETS_PARQUET,
         Y_TENSOR_PATH,
+        get_redis_client,
     )
 except ImportError:
     from config import (
@@ -473,44 +474,20 @@ def format_predictions(probs, held):
 # ==============================================================================
 if __name__ == "__main__":
     start_time = time.time()
-    print(f"[Inference] Fetching data for customer: {dummy_data['customer_id']}...")
-    customer_info = get_customer(dummy_data["customer_id"], df)
+    customer_id = dummy_data["customer_id"]
+    print(f"[Inference] Fetching features from Redis Feature Store for customer: {customer_id}...")
+    from src.features.feature_store import RedisFeatureStore
 
-    # Pull complete available customer history
-    customer_history = get_customer_history(dummy_data["customer_id"], history)
+    fs = RedisFeatureStore(redis_client=get_redis_client())
+    t_feat = time.time()
+    x_qry, held, metadata = fs.get_customer_features(customer_id, enable_fallback=True)
+    feat_time_ms = (time.time() - t_feat) * 1000
     print(
-        f"[Inference] Pulled {customer_history.height} historical snapshots (Total with test: {customer_history.height + customer_info.height})"
+        f"[Inference] Retrieved features in {feat_time_ms:.2f}ms (Held: {held}, Shape: {x_qry.shape})"
     )
 
-    customer = pl.concat([customer_info, customer_history], how="vertical")
-
-    engineered_customer = feature_engineering_pipeline(customer)
-    feature_cols = [
-        c
-        for c in engineered_customer.columns
-        if c not in ["customer_id", "snapshot_date"]
-    ]
-    print(
-        f"[Inference] Engineered {len(feature_cols)} features (Total columns: {engineered_customer.width})"
-    )
-
-    held = get_already_held_mask(engineered_customer)
-    print(f"[Inference] Got mask {held}")
-
-    processed_customer = encode_and_normalize(engineered_customer)
-    query = (
-        processed_customer.drop("customer_id", "snapshot_date")
-        .to_torch()
-        .to(torch.float32)
-    )
-    print("[Inference] Processed customer info")
-
-    x_qry = prepare_query(query.to(device, dtype=dtype)).to(torch.float32).cpu().numpy()
-    print(
-        f"[Inference] Prepared query tensor with shape {x_qry.shape} and dtype {x_qry.dtype}"
-    )
-
-    target_info = get_customer_targets(dummy_data["customer_id"]).to_dicts()[0]
+    target_matches = get_customer_targets(customer_id).to_dicts()
+    target_info = target_matches[0] if target_matches else {}
     print(f"[Inference] Got target info \n {target_info}")
 
     inputs = [grpcclient.InferInput("QUERY_FEATURES", [1, 1, 128], "FP32")]

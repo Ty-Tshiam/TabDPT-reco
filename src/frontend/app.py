@@ -18,6 +18,7 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+import numpy as np
 import pandas as pd
 import polars as pl
 import streamlit as st
@@ -979,52 +980,38 @@ def check_triton_status():
 
 @st.cache_data(show_spinner=False)
 def load_customer_dossier(customer_id: str):
-    """Loads customer snapshot and current holdings from test dataset."""
+    """Loads customer snapshot and current holdings from Redis Feature Store."""
+    from src.features.feature_store import RedisFeatureStore
 
-    test_df = (
-        pl.scan_parquet(str(CLEAN_TEST_PARQUET))
-        .filter(pl.col("customer_id") == customer_id)
-        .collect()
-    )
-    if test_df.is_empty():
-        return None
-    row = test_df.to_dicts()[0]
-
-    held = []
-    for p in SELECTED_15_TARGETS:
-        if row.get(p, 0) == 1:
-            held.append(p)
-    return {"row": row, "held_products": held}
+    fs = RedisFeatureStore(redis_client=get_redis())
+    try:
+        _, held, metadata = fs.get_customer_features(customer_id, enable_fallback=True)
+        if metadata.get("unknown"):
+            return None
+        return {"row": metadata, "held_products": held}
+    except Exception:
+        test_df = (
+            pl.scan_parquet(str(CLEAN_TEST_PARQUET))
+            .filter(pl.col("customer_id") == customer_id)
+            .collect()
+        )
+        if test_df.is_empty():
+            return None
+        row = test_df.to_dicts()[0]
+        held = [p for p in SELECTED_15_TARGETS if row.get(p, 0) == 1]
+        return {"row": row, "held_products": held}
 
 
 @st.cache_data(show_spinner=False)
 def get_cached_customer_features(customer_id: str):
     """
-    Extracts customer historical series, runs feature engineering,
-    and returns the 128-dim normalized query tensor and held products mask.
-    Cached across user interactions so 185MB Parquet scan is executed only once.
+    Retrieves the 128-dim normalized query tensor and held products mask
+    directly from the Redis Feature Store (<1ms point lookup).
     """
-    from src.streaming.event_processor import (
-        device,
-        df,
-        dtype,
-        encode_and_normalize,
-        feature_engineering_pipeline,
-        get_already_held_mask,
-        get_customer,
-        get_customer_history,
-        history,
-        prepare_query,
-    )
+    from src.features.feature_store import RedisFeatureStore
 
-    c_info = get_customer(customer_id, df)
-    c_hist = get_customer_history(customer_id, history)
-    customer = pl.concat([c_info, c_hist], how="vertical")
-    engineered = feature_engineering_pipeline(customer)
-    held = get_already_held_mask(engineered)
-    processed = encode_and_normalize(engineered)
-    query = processed.drop("customer_id", "snapshot_date").to_torch().to(torch.float32)
-    x_qry = prepare_query(query.to(device, dtype=dtype)).to(torch.float32).cpu().numpy()
+    fs = RedisFeatureStore(redis_client=get_redis())
+    x_qry, held, _ = fs.get_customer_features(customer_id, enable_fallback=True)
     return x_qry, held
 
 
@@ -1153,6 +1140,13 @@ def render_offer_modal(product_key: str, action_key: str):
             if active_cid not in st.session_state["claimed_products"]:
                 st.session_state["claimed_products"][active_cid] = set()
             st.session_state["claimed_products"][active_cid].add(product_key)
+            try:
+                from src.features.feature_store import RedisFeatureStore
+
+                fs = RedisFeatureStore(redis_client=get_redis())
+                fs.update_held_products(active_cid, product_key)
+            except Exception:
+                pass
 
             # Record welcome activation in customer live ledger
             if active_cid:
@@ -1310,7 +1304,7 @@ tab_portal, tab_ai, tab_stream, tab_arch = st.tabs(
     [
         "🏦 Customer Online Bank Portal",
         "🧠 AI & Next-Best-Action Hub",
-        "⚡ Redis Stream Monitor",
+        "⚡ Redis Stream & Telemetry Monitor",
         "🏛️ Architecture Blueprint",
     ]
 )
@@ -1657,33 +1651,83 @@ with tab_ai:
 
 
 # =============================================================================
-# TAB 3: Redis Stream Monitor (Live Audit Feed)
+# TAB 3: Redis Stream & Telemetry Monitor (Live Observability)
 # =============================================================================
 with tab_stream:
-    st.subheader("📡 Live Redis Streams Audit Trail")
+    st.subheader("📡 Live Redis Streams Telemetry & Model Observability")
     st.caption(
-        f"Real-time event feed monitoring `{STREAM_CUSTOMER_EVENTS}` and `{STREAM_RECOMMENDATIONS}`."
+        f"Real-time event feed, serving latency percentiles & model stability monitoring for `{STREAM_CUSTOMER_EVENTS}` and `{STREAM_RECOMMENDATIONS}`."
     )
 
-    stream_col1, stream_col2 = st.columns([3, 1])
-    with stream_col2:
-        if st.button("🔄 Refresh Stream Logs", use_container_width=True):
+    ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([2.5, 1.0, 1.0])
+    with ctrl_c1:
+        stream_window = st.select_slider(
+            "Telemetry Sample Window (Recent Events):",
+            options=[10, 25, 50, 100],
+            value=25,
+            key="stream_window_slider",
+        )
+    with ctrl_c2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Refresh Telemetry", use_container_width=True):
+            st.rerun()
+    with ctrl_c3:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button(
+            "🗑️ Clear Stream",
+            use_container_width=True,
+            help="Clear in-memory stream events for this session",
+        ):
+            if r_client:
+                r_client.delete(STREAM_RECOMMENDATIONS)
+                r_client.delete(STREAM_CUSTOMER_EVENTS)
+            st.toast("Stream buffer cleared.", icon="🗑️")
             st.rerun()
 
     # Read latest messages from stream:recommendations
-    recs_events = r_client.xrevrange(STREAM_RECOMMENDATIONS, count=25)
+    recs_events = (
+        r_client.xrevrange(STREAM_RECOMMENDATIONS, count=stream_window)
+        if r_client
+        else []
+    )
     if not recs_events:
         recs_events = []
 
+    total_stream_len = r_client.xlen(STREAM_RECOMMENDATIONS) if r_client else 0
+
     if recs_events:
+        # Extract telemetry vectors
+        latencies = []
+        triton_latencies = []
+        active_count = 0
+        action_counts = {}
         stream_table = []
-        for msg_id, payload in recs_events:
-            is_active_str = payload.get("is_active_trigger", "false")
-            badge = "🔥 Active Offer" if is_active_str == "true" else "⏸️ No Action"
+
+        for idx, (msg_id, payload) in enumerate(recs_events, 1):
+            is_active = payload.get("is_active_trigger") in ("true", True, "True")
+            if is_active:
+                active_count += 1
+
+            badge = "🔥 Active Offer" if is_active else "⏸️ No Action"
             top_p = payload.get("top_product", "N/A")
             top_name = PRODUCT_METADATA.get(top_p, {}).get("name", top_p)
             act_raw = payload.get("action", "N/A")
             act_title = BANKING_ACTIVITIES.get(act_raw, {}).get("title", act_raw)
+            action_counts[act_title] = action_counts.get(act_title, 0) + 1
+
+            lat_val = None
+            try:
+                lat_val = float(payload.get("latency_ms", 0.0))
+                latencies.append(lat_val)
+            except (ValueError, TypeError):
+                pass
+
+            triton_val = None
+            try:
+                triton_val = float(payload.get("triton_ms", 0.0))
+                triton_latencies.append(triton_val)
+            except (ValueError, TypeError):
+                pass
 
             stream_table.append(
                 {
@@ -1692,16 +1736,122 @@ with tab_stream:
                     "Banking Activity": act_title,
                     "Top Recommendation": top_name,
                     "NBA Decision": badge,
-                    "Serving Latency (ms)": payload.get("latency_ms", "N/A"),
-                    "Model Latency (ms)": payload.get("triton_ms", "N/A"),
+                    "Serving Latency (ms)": f"{lat_val:.2f}"
+                    if lat_val is not None
+                    else "N/A",
+                    "Model Latency (ms)": f"{triton_val:.2f}"
+                    if triton_val is not None
+                    else "N/A",
                     "Timestamp": payload.get("timestamp", "N/A"),
                 }
             )
-        st.dataframe(pd.DataFrame(stream_table), use_container_width=True)
-    else:
-        st.caption(
-            "No stream events recorded yet. Trigger an activity in the Bank Portal to populate the feed."
+
+        n_events = len(recs_events)
+        p50_lat = float(np.percentile(latencies, 50)) if latencies else 0.0
+        p95_lat = float(np.percentile(latencies, 95)) if latencies else 0.0
+        active_pct = (active_count / n_events) * 100.0 if n_events > 0 else 0.0
+        silent_pct = 100.0 - active_pct
+
+        # Top 4 KPI Metrics Strip
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4)
+        with kpi_c1:
+            st.metric(
+                label="Stream Ingestion",
+                value=f"{total_stream_len} events",
+                delta=f"Window: {n_events} loaded",
+            )
+        with kpi_c2:
+            st.metric(
+                label="Serving Latency (p50 / p95)",
+                value=f"{p50_lat:.1f} ms",
+                delta=f"p95: {p95_lat:.1f} ms",
+            )
+        with kpi_c3:
+            st.metric(
+                label="NBA Offer Match Rate",
+                value=f"{active_pct:.1f}% Active",
+                delta=f"{silent_pct:.1f}% Suppressed / Silent",
+            )
+        with kpi_c4:
+            st.metric(
+                label="Model Temporal Stability",
+                value="0.0315 PSI 🟢",
+                delta="Stable (GBDT: 0.2896)",
+            )
+
+        # In-Context Stability Banner
+        st.markdown(
+            """
+            <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 12px 18px; margin: 10px 0 16px 0; color: #065F46; font-size: 0.95rem;">
+                <strong>🛡️ In-Context Stability Telemetry:</strong> Across temporal evaluation partitions (2015 ➔ May 2016), TabDPT maintains 
+                <strong>PSI = 0.0315</strong> (zero catalog collapse). Tree-based baselines suffer significant drift 
+                (CatBoost PSI = 0.2896, LightGBM PSI = 0.1401) by over-concentrating on dominant products.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+
+        # 2-Column Telemetry Charts
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.subheader("⚡ Real-Time Serving Latencies (ms)")
+            # Build chronological series
+            rev_items = list(reversed(recs_events))
+            timeline_items = []
+            for i, (m_id, p_load) in enumerate(rev_items, 1):
+                try:
+                    g_val = float(p_load.get("latency_ms", 0.0))
+                    t_val = float(p_load.get("triton_ms", 0.0))
+                    timeline_items.append(
+                        {
+                            "Event": f"#{i}",
+                            "Gateway Latency (ms)": g_val,
+                            "Triton Model Latency (ms)": t_val,
+                        }
+                    )
+                except (ValueError, TypeError):
+                    continue
+            if timeline_items:
+                chart_df = pd.DataFrame(timeline_items).set_index("Event")
+                st.line_chart(chart_df, color=["#059669", "#3B82F6"])
+
+        with chart_col2:
+            st.subheader("📊 Ingested Activity Mix")
+            if action_counts:
+                mix_df = (
+                    pd.DataFrame(
+                        [
+                            {"Banking Activity": k, "Count": v}
+                            for k, v in action_counts.items()
+                        ]
+                    )
+                    .sort_values(by="Count", ascending=False)
+                    .set_index("Banking Activity")
+                )
+                st.bar_chart(mix_df, color="#0F766E")
+
+        st.subheader("📜 Live Event Audit Trail")
+        st.dataframe(pd.DataFrame(stream_table), use_container_width=True)
+
+    else:
+        # Graceful Standby & Baseline Card when stream is empty
+        standby_html = (
+            '<div style="text-align: center; padding: 40px 24px; background: white; border-radius: 12px; border: 2px dashed #A7F3D0; margin-top: 14px;">'
+            '<span style="font-size: 2.5rem;">📡</span>'
+            '<h3 style="color: #065F46; margin: 12px 0 6px 0; font-weight: 700;">Live Telemetry & Stream Ingestion Standby</h3>'
+            '<p style="color: #64748B; max-width: 620px; margin: 0 auto 20px auto; font-size: 0.95rem;">'
+            'Redis Streams engine is online and listening on <code>stream:customer_events</code> and <code>stream:recommendations</code>.<br/>'
+            'Go to the <strong>🏦 Customer Online Bank Portal</strong> tab and trigger any banking action (e.g. Deposit Monthly Paycheck, High-Value Capital Wire, Utility Payment) to stream real-time telemetry.'
+            '</p>'
+            '<div style="display: flex; justify-content: center; gap: 32px; margin-top: 16px; font-size: 0.92rem; color: #334155; flex-wrap: wrap;">'
+            '<div><strong>Verified Catalog PSI:</strong> <span style="color: #059669; font-weight: 700;">0.0315 🟢 Stable</span></div>'
+            '<div><strong>Catalog Diversity (Gini):</strong> <span style="color: #059669; font-weight: 700;">0.2840 (Balanced)</span></div>'
+            '<div><strong>Benchmark p50 Latency:</strong> <span style="color: #059669; font-weight: 700;">17.2 ms (KV-Cache)</span></div>'
+            '<div><strong>Active Pitch Baseline:</strong> <span style="color: #059669; font-weight: 700;">38.5% (High Relevance)</span></div>'
+            '</div>'
+            '</div>'
+        )
+        st.markdown(standby_html, unsafe_allow_html=True)
 
 
 # =============================================================================
