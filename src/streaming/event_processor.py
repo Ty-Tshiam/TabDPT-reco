@@ -4,11 +4,11 @@ Real-Time Event Processor & Recommendation Worker for TabDPT.
 Executes the validated 3-Stage Cascaded Architecture:
 1. Stage 1: CPU LightGBM Gatekeeper (<0.002 ms, ROC-AUC ~0.893)
    - Bypasses GPU on non-buyer events (p_buy < 0.20, saving ~42.3% compute).
-2. Stage 2: GPU TabDPT In-Context Model (73,968 Scaled Context) + Gate 1C Odds Calibration
+2. Stage 2: GPU TabDPT In-Context Model (73,968 Scaled Context) + Odds-Ratio Calibration (ORC) Gate
    - Per-class thresholding: theta_noisy=6.0 for noisy sinks, theta_clean=1.8 for clean products.
 3. Stage 3: Dual-Gamma + Next-Best-Action Relevance Routing
-   - Candidate A (gamma=0.20): Silently caches 54.3% buyer top-1 sniper recs into Redis.
-   - Candidate C (gamma=0.30): Fires live customer push notifications (91.0% hold safety, 0.8198 Alert MAP@7).
+   - Cache Predictor (gamma=0.20): Silently caches 54.3% buyer top-1 sniper recs into Redis.
+   - Live Predictor (gamma=0.30): Fires live customer push notifications (91.0% hold safety, 0.8198 Alert MAP@7).
 """
 
 import datetime
@@ -100,10 +100,10 @@ except ImportError:
 # ==============================================================================
 # Noisy sink classes identified in Experiment 1
 NOISY_SINKS = {1, 7, 9, 14, 15}  # current_account, particular_plus, funds, long_term_deposits, taxes
-GAMMA_CACHE = 0.20               # Candidate A: Wake up GPU & allow silent caching (54.3% Sniper)
-GAMMA_LIVE  = 0.30               # Candidate C: Allow live push alerts (91.0% Non-Buyer Hold)
-THETA_NOISY = 6.0                # Gate 1C odds-ratio threshold for noisy sinks
-THETA_CLEAN = 1.8                # Gate 1C odds-ratio threshold for clean snipers
+GAMMA_CACHE = 0.20               # Cache Predictor: Wake up GPU & allow silent caching (54.3% Sniper)
+GAMMA_LIVE  = 0.30               # Live Predictor: Allow live push alerts (91.0% Non-Buyer Hold)
+THETA_NOISY = 6.0                # Odds-Ratio Calibration (ORC) Gate threshold for noisy sinks
+THETA_CLEAN = 1.8                # Odds-Ratio Calibration (ORC) Gate threshold for clean snipers
 
 
 # ==============================================================================
@@ -334,7 +334,7 @@ def process_customer_event(
         }
 
     # -------------------------------------------------------------------------
-    # STAGE 2: GPU TabDPT (73,968 Scaled Context) + Gate 1C Calibration
+    # STAGE 2: GPU TabDPT (73,968 Scaled Context) + Odds-Ratio Calibration (ORC) Gate
     # -------------------------------------------------------------------------
     features_128d = pad_and_clip_features(features_80d)
     probs_16d = tabdpt_model.predict_proba(features_128d)[0]  # Shape: (16,)
@@ -363,7 +363,7 @@ def process_customer_event(
     odds_ratio = float(probs_16d[cand_prod]) / p_class0
     theta_gate = THETA_NOISY if cand_prod in NOISY_SINKS else THETA_CLEAN
 
-    # Gate 1C Suppression: override to Class 0 if odds ratio is insufficient
+    # Odds-Ratio Calibration (ORC) Gate Suppression: override to Class 0 if odds ratio is insufficient
     if odds_ratio <= theta_gate:
         return {
             "prediction": 0,
@@ -403,10 +403,11 @@ def process_customer_event(
 # ==============================================================================
 # Redis Publisher & Caching
 # ==============================================================================
-def publish_reco(stream_payload: dict, r_client=None):
+def publish_reco(stream_payload: dict, r_client=None) -> str:
     """
-    Updates Redis silent cache (recs:{customer_id}) for all events, and publishes
-    live customer push notifications to STREAM_RECOMMENDATIONS when is_active_trigger is True.
+    Persists recommendations to Redis cache (recs:{customer_id}) and appends every
+    decision (both active push alerts and silent/held events) to STREAM_RECOMMENDATIONS
+    for full end-to-end telemetry and audit trail visibility.
     """
     client = r_client or get_redis_client()
     customer_id = stream_payload["customer_id"]
@@ -415,18 +416,21 @@ def publish_reco(stream_payload: dict, r_client=None):
     # Always persist recommendations to Redis cache with TTL
     client.set(cache_key, json.dumps(stream_payload), ex=RECS_TTL_SECONDS)
 
+    # Always publish to STREAM_RECOMMENDATIONS so audit trails & telemetry track all events
+    new_msg_id = client.xadd(STREAM_RECOMMENDATIONS, stream_payload)
+
     is_active = stream_payload.get("is_active_trigger") in (True, "true", "True")
     if is_active:
-        new_msg_id = client.xadd(STREAM_RECOMMENDATIONS, stream_payload)
         print(
             f"[Worker] 🔥 Live Push Alert sent to {STREAM_RECOMMENDATIONS} "
             f"(customer: {customer_id}, reco: '{stream_payload.get('top_product')}', msg_id: {new_msg_id})"
         )
     else:
         print(
-            f"[Worker] 💾 Cached silently in {cache_key} "
-            f"(customer: {customer_id}, regime: '{stream_payload.get('regime')}')"
+            f"[Worker] 💾 Silent Decision logged to {STREAM_RECOMMENDATIONS} & cached in {cache_key} "
+            f"(customer: {customer_id}, regime: '{stream_payload.get('regime')}', msg_id: {new_msg_id})"
         )
+    return new_msg_id
 
 
 # ==============================================================================

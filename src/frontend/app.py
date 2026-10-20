@@ -1073,8 +1073,8 @@ def run_customer_model_inference(customer_id: str, claimed_tuple: tuple = (), ac
     """
     Executes the validated 3-Stage Cascaded Routing Architecture:
     - Stage 1: CPU LightGBM Gatekeeper (<0.002 ms)
-    - Stage 2: GPU TabDPT (73,968 Scaled Context) + Gate 1C Odds Calibration
-    - Stage 3: Dual-Gamma + Next-Best-Action Relevance Routing
+    - Stage 2: GPU TabDPT (73,968 Scaled Context) + Odds-Ratio Calibration (ORC) Gate
+    - Stage 3: Dual-Predictor + Next-Best-Action Relevance Routing
     """
     from src.streaming.event_processor import (
         GAMMA_CACHE,
@@ -1136,7 +1136,7 @@ def run_customer_model_inference(customer_id: str, claimed_tuple: tuple = (), ac
 def execute_pipeline_for_event(customer_id: str, action: str):
     """
     Executes end-to-end inference and business logic:
-    1. Executes 3-Stage Cascade (CPU LightGBM -> GPU TabDPT + Gate 1C -> Dual-Gamma Routing).
+    1. Executes 3-Stage Cascade (CPU LightGBM -> GPU TabDPT + ORC Gate -> Dual-Predictor Routing).
     2. Publishes event to STREAM_RECOMMENDATIONS and updates KEY_CUSTOMER_RECS in Redis.
     """
     from src.streaming.event_processor import publish_reco
@@ -1236,7 +1236,7 @@ def render_offer_modal(product_key: str, action_key: str):
 
             st.session_state["claimed_offer"] = meta.get("name", product_key)
             st.session_state.pop("popup_offer_to_render", None)
-            st.session_state.pop("last_emitted_payload", None)
+            # Retain st.session_state["last_emitted_payload"] so AI NBA Hub keeps full telemetry & prediction context
             st.toast(
                 f"🎉 {meta.get('name', product_key)} opened! Added to your Santander portfolio.",
                 icon="✅",
@@ -1348,23 +1348,23 @@ with kpi_c1:
 with kpi_c2:
     st.metric(
         label="Stage 1 Gatekeeper",
-        value="LightGBM (CPU)",
-        delta="0.8884 AUC (<1.1 ms)",
+        value="LightGBM Gate",
+        delta="0.8912 AUC (<0.002 ms)",
     )
 with kpi_c3:
     if triton_ok:
-        st.metric(label="Stage 2 TabDPT", value="Triton gRPC", delta="KV-Cache Ready")
+        st.metric(label="Model Serving", value="Triton Server", delta="Port 8001 (KV-Cache)")
     else:
         st.metric(
-            label="Stage 2 TabDPT",
-            value="GPU / PyTorch",
-            delta="KV-Cache Resident",
+            label="Model Serving",
+            value="Triton Server",
+            delta="In-Process Fallback",
         )
 with kpi_c4:
     st.metric(
-        label="Cascade Routing",
-        value="Dual-Gamma Mode",
-        delta="Cand A (Silent) + Cand C (Live)",
+        label="Event Hub",
+        value="Redis Engine Streams",
+        delta="Feature Store + Streams",
     )
 
 st.markdown("---")
@@ -1445,7 +1445,7 @@ with tab_portal:
                     f'<div class="trigger-active-banner">'
                     f"💥 <strong>LIVE OFFER TRIGGERED!</strong> Action <strong>{tx['title']}</strong> processed ({tx['amount']}). "
                     f"Balance: <strong>€{tx['new_balance']:,.2f}</strong> &nbsp;|&nbsp; "
-                    f"<span class='regime-badge-live'>🔥 Candidate C Live Push (p_buy={p_b} ≥ 0.30)</span><br/>"
+                    f"<span class='regime-badge-live'>🔥 Live Predictor Push (p_buy={p_b} ≥ 0.30)</span><br/>"
                     f"<small>Recommended: <strong>{top_p_name}</strong> • Promotional modal dispatched to customer screen.</small>"
                     f"</div>",
                     unsafe_allow_html=True,
@@ -1457,7 +1457,7 @@ with tab_portal:
                     f"Balance: <strong>€{tx['new_balance']:,.2f}</strong> &nbsp;|&nbsp; "
                     f"<span class='regime-badge-cpu'>⚡ Stage 1 CPU Hold</span><br/>"
                     f"<small style='color: #475569;'>Non-buyer propensity <strong>p_buy = {p_b} < 0.20</strong>. "
-                    f"GPU inference completely bypassed on CPU (<1.1 ms). Zero notification friction.</small>"
+                    f"GPU inference completely bypassed on CPU (<0.002 ms). Zero notification friction.</small>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -1466,7 +1466,7 @@ with tab_portal:
                     f'<div class="trigger-passive-banner">'
                     f"🛡️ <strong>Transaction Confirmed:</strong> {tx['title']} processed ({tx['amount']}). "
                     f"Balance: <strong>€{tx['new_balance']:,.2f}</strong> &nbsp;|&nbsp; "
-                    f"<span class='regime-badge-gate'>🛡️ Stage 2 Gate 1C Hold</span><br/>"
+                    f"<span class='regime-badge-gate'>🛡️ ORC Gate Hold</span><br/>"
                     f"<small style='color: #475569;'>Odds ratio <strong>{o_r}</strong> below noise barrier for candidate <strong>{top_p_name}</strong>. "
                     f"Suppressed to preserve high precision.</small>"
                     f"</div>",
@@ -1477,9 +1477,9 @@ with tab_portal:
                     f'<div class="trigger-passive-banner">'
                     f"💾 <strong>Transaction Confirmed:</strong> {tx['title']} processed ({tx['amount']}). "
                     f"Balance: <strong>€{tx['new_balance']:,.2f}</strong> &nbsp;|&nbsp; "
-                    f"<span class='regime-badge-cache'>💾 Candidate A Silent Cache</span><br/>"
+                    f"<span class='regime-badge-cache'>💾 Cache Predictor (Silent Cache)</span><br/>"
                     f"<small style='color: #475569;'>Recommendation <strong>{top_p_name}</strong> (p_buy={p_b}, odds={o_r}) silently stored in Redis <code>recs:{active_cust_id}</code>. "
-                    f"Action '{tx['title']}' is routine, so live notification was suppressed.</small>"
+                    f"Action '{tx['title']}' is not relevant, so live notification was suppressed.</small>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -1675,24 +1675,24 @@ with tab_ai:
             gpu_sub = "42.3% GPU Compute Saved"
         elif regime == "stage2_gate1c_hold":
             card_class = "reco-hero-card-suppressed"
-            status_text = "⏸️ STAGE 2 GATE 1C HOLD (Odds Ratio < θ)"
-            status_badge = "<span class='regime-badge-gate'>Stage 2 Gate 1C Hold</span>"
-            decision_kpi = "Gate 1C Hold ⏸️"
+            status_text = "⏸️ ORC GATE HOLD (Odds Ratio < θ)"
+            status_badge = "<span class='regime-badge-gate'>ORC Gate Hold</span>"
+            decision_kpi = "ORC Gate Hold ⏸️"
             decision_sub = "Odds Ratio < θ"
             gpu_kpi = "🖥️ Invoked RTX 3090"
             gpu_sub = "73,968 Rows Context"
         elif regime == "candidate_a_silent_cache":
             card_class = "reco-hero-card-suppressed"
-            status_text = "💾 CANDIDATE A: SILENT REDIS CACHE (p_buy ≥ 0.20)"
-            status_badge = "<span class='regime-badge-cache'>Candidate A: Silent Cache</span>"
-            decision_kpi = "Silent Cache 💾"
+            status_text = "💾 CACHE PREDICTOR: SILENT REDIS UPDATE (p_buy ≥ 0.20)"
+            status_badge = "<span class='regime-badge-cache'>Cache Predictor: Silent Update</span>"
+            decision_kpi = "Cache Predictor 💾"
             decision_sub = "recs:{cust_id} Stored"
             gpu_kpi = "🖥️ Invoked RTX 3090"
             gpu_sub = "54.3% Sniper Precision"
         elif regime == "candidate_c_live_push":
             card_class = "reco-hero-card-active"
-            status_text = "🔥 CANDIDATE C: LIVE PUSH ALERT (p_buy ≥ 0.30 + Matrix Match)"
-            status_badge = "<span class='regime-badge-live'>Candidate C: Live Push</span>"
+            status_text = "🔥 LIVE PREDICTOR: ACTIVE PUSH ALERT (p_buy ≥ 0.30 + Matrix Match)"
+            status_badge = "<span class='regime-badge-live'>Live Predictor: Push Alert</span>"
             decision_kpi = "Live Alert Push 🔥"
             decision_sub = "MAP@7: 0.8198"
             gpu_kpi = "🖥️ Invoked RTX 3090"
@@ -1707,6 +1707,15 @@ with tab_ai:
             gpu_sub = "In-Context Model"
 
         # Hero Card
+        is_already_claimed = top_prod in st.session_state.get(
+            "claimed_products", {}
+        ).get(active_cust_id, set())
+        claimed_badge = (
+            ' &nbsp;|&nbsp; <span style="background: #DCFCE7; color: #065F46; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem;">✅ Claimed in Portfolio</span>'
+            if is_already_claimed
+            else ""
+        )
+
         hero_html = (
             f'<div class="{card_class}">'
             f'<div style="display: flex; align-items: center; justify-content: space-between;">'
@@ -1716,7 +1725,7 @@ with tab_ai:
             f'<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">'
             f"<div>"
             f'<h2 style="margin: 0; color: #1E293B; font-size: 2rem;">{meta["icon"]} {meta["name"]}</h2>'
-            f'<span style="color: #64748B; font-size: 0.95rem;">Category: <strong>{meta["category"]}</strong> &nbsp;|&nbsp; Customer ID: <strong>{active_cust_id}</strong> &nbsp;|&nbsp; Trigger Activity: <strong>{act_info.get("title", last_action)}</strong></span>'
+            f'<span style="color: #64748B; font-size: 0.95rem;">Category: <strong>{meta["category"]}</strong> &nbsp;|&nbsp; Customer ID: <strong>{active_cust_id}</strong> &nbsp;|&nbsp; Trigger Activity: <strong>{act_info.get("title", last_action)}</strong>{claimed_badge}</span>'
             f"</div>"
             f'<div style="text-align: right;">'
             f'<span class="status-badge-ok">Serving: {latency} ms</span><br/>'
@@ -1756,53 +1765,61 @@ with tab_ai:
                 delta=gpu_sub,
             )
 
-        # Dual-Gamma Routing Comparison Banner
-        border_cand_a = "#0284C7" if regime == "candidate_a_silent_cache" else "#E2E8F0"
-        shadow_cand_a = "0 0 0 2px #BAE6FD" if regime == "candidate_a_silent_cache" else "none"
-        badge_cand_a = "<span class='regime-badge-cache'>ACTIVE EXECUTION</span>" if regime == "candidate_a_silent_cache" else "<span class='status-badge-warn'>γ_cache = 0.20</span>"
+        # Real-Time Decision & Routing Status Box (Single Unified Box)
+        if regime == "candidate_c_live_push":
+            border_box = "#059669"
+            bg_box = "#F0FDF4"
+            badge_box = "<span class='regime-badge-live'>LIVE PREDICTOR ALERT</span>"
+            desc_text = (
+                f"<strong>Channel:</strong> Live Redis Stream (<code>stream:recommendations</code>) &amp; Customer In-App Dialog<br/>"
+                f"<strong>Routing Logic:</strong> Propensity (p_buy = {p_buy_val:.3f} ≥ 0.30) cleared the Live Predictor threshold with action relevance match. "
+                f"High-impact recommendation delivered in real time (91.0% Hold Safety, 0.8198 Alert MAP@7)."
+            )
+        elif regime == "candidate_a_silent_cache":
+            border_box = "#0284C7"
+            bg_box = "#F0F9FF"
+            badge_box = "<span class='regime-badge-cache'>CACHE PREDICTOR (SILENT UPDATE)</span>"
+            desc_text = (
+                f"<strong>Channel:</strong> Redis Feature Store (<code>recs:{active_cust_id}</code>)<br/>"
+                f"<strong>Routing Logic:</strong> Propensity (p_buy = {p_buy_val:.3f} ≥ 0.20) cleared the Cache Predictor threshold. "
+                f"Silently updated customer recommendation profile for headless retrieval without pop-up friction (54.3% Sniper Precision)."
+            )
+        elif regime == "stage2_gate1c_hold":
+            border_box = "#F59E0B"
+            bg_box = "#FFFBEB"
+            badge_box = "<span class='regime-badge-gate'>ORC GATE SUPPRESSION</span>"
+            desc_text = (
+                f"<strong>Channel:</strong> Suppressed (Zero Customer Disturbance)<br/>"
+                f"<strong>Routing Logic:</strong> TabDPT odds ratio ({odds_val:.2f}) was below the Odds-Ratio Calibration noise barrier (θ = 6.0/1.8). "
+                f"Suppressed candidate to Hold (Class 0) to eliminate noisy sink false positives."
+            )
+        else:
+            border_box = "#E2E8F0"
+            bg_box = "#F8FAFC"
+            badge_box = "<span class='regime-badge-cpu'>STAGE 1 CPU HOLD</span>"
+            desc_text = (
+                f"<strong>Channel:</strong> GPU Bypassed on CPU (&lt; 0.002 ms)<br/>"
+                f"<strong>Routing Logic:</strong> Non-buyer propensity (p_buy = {p_buy_val:.3f} &lt; 0.20) intercepted on CPU. "
+                f"Completely bypassed GPU TabDPT forward pass, conserving compute while maintaining zero notification fatigue."
+            )
 
-        border_cand_c = "#059669" if regime == "candidate_c_live_push" else "#E2E8F0"
-        shadow_cand_c = "0 0 0 2px #A7F3D0" if regime == "candidate_c_live_push" else "none"
-        badge_cand_c = "<span class='regime-badge-live'>ACTIVE EXECUTION</span>" if regime == "candidate_c_live_push" else "<span class='status-badge-warn'>γ_live = 0.30</span>"
-
-        dual_routing_html = f"""
-        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 18px; margin: 12px 0 16px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-weight: 700; color: #1E293B; font-size: 0.95rem;">🎯 Production Dual-γ Cascaded Routing Architecture:</span>
-                <span style="font-size: 0.85rem; color: #64748B;">Holdout MAP@7: <strong>0.8198</strong> (Conditional) | <strong>0.7669</strong> (Cached)</span>
+        routing_html = f"""
+        <div style="background-color: {bg_box}; border: 1.5px solid {border_box}; border-radius: 8px; padding: 12px 18px; margin: 12px 0 16px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-weight: 700; color: #1E293B; font-size: 0.95rem;">🎯 Real-Time Decision &amp; Routing Status</span>
+                {badge_box}
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <div style="background: white; border: 1px solid {border_cand_a}; border-radius: 6px; padding: 10px 14px; box-shadow: {shadow_cand_a};">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="color: #0369A1;">Candidate A: Silent Cache (γ = 0.20)</strong>
-                        {badge_cand_a}
-                    </div>
-                    <p style="margin: 6px 0 0 0; font-size: 0.85rem; color: #475569; line-height: 1.4;">
-                        <strong>Channel:</strong> Redis Feature Store (<code>recs:{active_cust_id}</code>)<br/>
-                        <strong>Accuracy:</strong> 54.3%–55.3% Buyer Top-1 Sniper Precision | 42.3% GPU Saved<br/>
-                        <strong>Purpose:</strong> Silently updates user profile for downstream headless retrieval without pushing pop-ups.
-                    </p>
-                </div>
-                <div style="background: white; border: 1px solid {border_cand_c}; border-radius: 6px; padding: 10px 14px; box-shadow: {shadow_cand_c};">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="color: #047857;">Candidate C: Live Push Alert (γ = 0.30)</strong>
-                        {badge_cand_c}
-                    </div>
-                    <p style="margin: 6px 0 0 0; font-size: 0.85rem; color: #475569; line-height: 1.4;">
-                        <strong>Channel:</strong> Live Redis Stream (<code>stream:recommendations</code>) + In-App Dialog<br/>
-                        <strong>Precision:</strong> 0.8198 Conditional Alert MAP@7 | 91.05% Non-Buyer Hold<br/>
-                        <strong>Purpose:</strong> Context-relevant push alert only when customer activity warrants an immediate offer.
-                    </p>
-                </div>
-            </div>
+            <p style="margin: 4px 0 0 0; font-size: 0.88rem; color: #334155; line-height: 1.45;">
+                {desc_text}
+            </p>
         </div>
         """
-        st.markdown(dual_routing_html, unsafe_allow_html=True)
+        st.markdown(routing_html, unsafe_allow_html=True)
 
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
-            st.subheader("📋 Top Candidate Recommendations")
+            st.subheader("📋 Top Recommendations")
             st.caption(
                 "Ranked by model propensity against 73,968 in-context rows. Held products are strictly filtered."
             )
@@ -1820,7 +1837,7 @@ with tab_ai:
                 elif regime == "stage1_cpu_hold":
                     status_col = "🛑 CPU Gatekeeper Hold"
                 elif regime == "stage2_gate1c_hold":
-                    status_col = "⏸️ Gate 1C Suppressed"
+                    status_col = "⏸️ ORC Gate Suppressed"
                 else:
                     status_col = f"Rank #{rank} Candidate"
 
@@ -1944,11 +1961,11 @@ with tab_stream:
             if regime_raw == "stage1_cpu_hold":
                 regime_label = "🛑 CPU Gatekeeper Hold"
             elif regime_raw == "stage2_gate1c_hold":
-                regime_label = "⏸️ Gate 1C Hold"
+                regime_label = "⏸️ ORC Gate Hold"
             elif regime_raw == "candidate_a_silent_cache":
-                regime_label = "💾 Silent Cache"
+                regime_label = "💾 Cache Predictor (Silent)"
             elif regime_raw == "candidate_c_live_push":
-                regime_label = "🔥 Live Push Alert"
+                regime_label = "🔥 Live Predictor Alert"
             else:
                 regime_label = regime_raw
 
@@ -2028,13 +2045,14 @@ with tab_stream:
                 delta="+28.4% vs Baseline (0.6385)",
             )
 
-        # In-Context Stability Banner
+        # Telemetry & PSI Stability Banner
         st.markdown(
             """
-            <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 12px 18px; margin: 10px 0 16px 0; color: #065F46; font-size: 0.95rem;">
-                <strong>🛡️ Production In-Context Stability & Compute Efficiency:</strong> Running against the <strong>73,968 uniform context</strong> (16 classes × 4,623 rows), 
-                TabDPT maintains <strong>PSI = 0.0315</strong> (zero catalog collapse) while the Stage 1 CPU LightGBM gatekeeper intercepts 
-                <strong>42.3% to 55.6% of streaming traffic</strong> in &lt;1.1 ms, eliminating unnecessary GPU forward passes entirely.
+            <div style="background-color: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 8px; padding: 12px 18px; margin: 10px 0 16px 0; color: #065F46; font-size: 0.93rem; line-height: 1.5;">
+                <strong>🛡️ Real-Time Stream Telemetry &amp; Catalog Stability (PSI):</strong>
+                GBDTs (LightGBM/CatBoost) over-concentrate on popular products (Gini 0.68–0.74, PSI 0.14–0.29), while
+                <strong>TabDPT stays stable (PSI = 0.0315, Gini = 0.2840)</strong> across all 15 banking products with no popular-item starvation.
+                With durable Redis Streams (<code>stream:customer_events</code>) and sub-0.1 ms feature lookups, the pipeline serves personalized Next-Best-Action recommendations at &lt;20 ms p95.
             </div>
             """,
             unsafe_allow_html=True,
@@ -2108,100 +2126,62 @@ with tab_stream:
 # TAB 4: Architecture Blueprint
 # =============================================================================
 with tab_arch:
-    st.subheader("🏛️ Architecture Blueprint: 3-Stage Cascaded TabDPT RecSys")
-    st.caption("End-to-end production architecture: Stage 1 CPU LightGBM Gatekeeper ➔ Stage 2 GPU TabDPT Foundation Model (73,968 Context) ➔ Stage 3 Dual-γ Routing.")
+    st.subheader("🏛️ Architecture Blueprint: Real-Time Event Recommender")
+    st.caption("High-level overview of the event-driven serving pipeline from bank action trigger to Next-Best-Action recommendation.")
 
     st.markdown("""
     ```text
-      Customer Bank Portal (UI) ──[XADD event]──► Redis Stream Hub ('stream:customer_events')
-                                                               │
-                                                          [XREADGROUP]
-                                                               ▼
-                                 ┌────────────────────────────────────────────────────────┐
-                                 │ Stage 1: CPU LightGBM Gatekeeper (< 1.1 ms)            │
-                                 │ - Intercepts streaming non-buyer traffic on CPU        │
-                                 │ - 42.3% to 55.6% of events completely bypass GPU       │
-                                 └─────────────────────────────┬──────────────────────────┘
-                                                               │
-                               p_buy < 0.20                    │    p_buy ≥ 0.20
-                      ┌────────────────────────────────────────┴────────────────────────────────────────┐
-                      ▼                                                                                 ▼
-         ┌─────────────────────────┐                                              ┌──────────────────────────────────────────┐
-         │   stage1_cpu_hold       │                                              │ Stage 2: GPU TabDPT Foundation Model     │
-         │   [GPU BYPASS]          │                                              │ - 73,968 Uniform Context (16 cls × 4623) │
-         │   AP = 0.0, Latency 1ms │                                              │ - Precomputed KV-Cache (< 20 ms)         │
-         └─────────────────────────┘                                              └────────────────────┬─────────────────────┘
-                                                                                                       │
-                                                                                                       ▼
-                                                                                  ┌──────────────────────────────────────────┐
-                                                                                  │ Gate 1C: Calibrated Odds Suppression     │
-                                                                                  │ - θ_noisy = 6.0, θ_clean = 1.8           │
-                                                                                  │ - Suppresses noisy product sinks         │
-                                                                                  └────────────────────┬─────────────────────┘
-                                                                                                       │
-                                                            Odds Ratio < θ                             │  Odds Ratio ≥ θ
-                                   ┌───────────────────────────────────────────────────────────────────┴─────────────────────────────┐
-                                   ▼                                                                                                 ▼
-                      ┌─────────────────────────┐                                                      ┌───────────────────────────────────────────┐
-                      │   stage2_gate1c_hold    │                                                      │ Stage 3: Dual-γ Production Routing        │
-                      │   Enforced Hold         │                                                      └─────────────────────┬─────────────────────┘
-                      │   AP = 0.0              │                                                                            │
-                      └─────────────────────────┘                                          ┌─────────────────────────────────┴───────────────────┐
-                                                                                           ▼                                                     ▼
-                                                                     ┌───────────────────────────────────────────┐         ┌───────────────────────────────────────────┐
-                                                                     │ Candidate A (γ_cache = 0.20)              │         │ Candidate C (γ_live = 0.30)               │
-                                                                     │ Silent Redis Feature Store Cache          │         │ Live Customer Push Alert                  │
-                                                                     │ - recs:{customer_id}                      │         │ - Matrix Relevance Match                  │
-                                                                     │ - 54.3%–55.3% Sniper Buyer Accuracy       │         │ - 0.8198 Conditional Alert MAP@7          │
-                                                                     │ - Headless profile sync                   │         │ - In-App Pop-up Dialog                    │
-                                                                     └───────────────────────────────────────────┘         └─────────────────────┬─────────────────────┘
-                                                                                                                                                 │
-                                                                                                                                 ┌───────────────┴───────────────┐
-                                                                                                                                 ▼                               ▼
-                                                                                                                             [MATCH]                         [ROUTINE]
-                                                                                                                      stream:recommendations             Silent Cache Only
-                                                                                                                      + In-App Pop-up Ad                 (Zero Ad Fatigue)
+    ┌──────────────────────────────┐        XADD         ┌─────────────────────────────┐
+    │  Customer Bank Portal (UI)   │ ──────────────────► │   Redis Stream Hub          │
+    │  - Paycheck / Deposit / Bill │                     │   'stream:customer_events'  │
+    └──────────────────────────────┘                     └──────────────┬──────────────┘
+                                                                        │
+                                                                   XREADGROUP
+                                                                        ▼
+                                                         ┌─────────────────────────────┐
+                                                         │   Streaming Worker          │
+                                                         │   (event_processor.py)      │
+                                                         │   - Point Lookup (<0.1 ms)  │
+                                                         └──────────────┬──────────────┘
+                                                                        │
+                                                            p_buy < 0.20 (Hold / Bypass)
+                                                                        │
+    ┌──────────────────────────────┐     ModelInfer      ┌──────────────┴──────────────┐
+    │   Triton gRPC Server         │ ◄────────────────── │   Stage 1 CPU Gatekeeper    │
+    │   (TabDPT + KV-Cache)        │ ──────────────────► │   - LightGBM (ROC-AUC 0.8912│
+    │   - Port 8001 | Latency <20ms│    [Batch, 16]      │   - Intercepts 42-56% on CPU│
+    └──────────────────────────────┘                     └──────────────┬──────────────┘
+                                                                        │
+                                                       Filter Held & Odds Calibration
+                                                                        ▼
+                                                         ┌─────────────────────────────┐
+                                                         │   Next-Best-Action Gate     │
+                                                         │   - Match: Pop-up Ad Modal  │
+                                                         │   - Routine: Silent Receipt │
+                                                         └──────────────┬──────────────┘
+                                                                        │
+                                                                   XADD & Cache
+                                                                        ▼
+                                                         ┌─────────────────────────────┐
+                                                         │   Redis Stream & Cache      │
+                                                         │   - stream:recommendations  │
+                                                         │   - recs:{customer_id}      │
+                                                         └─────────────────────────────┘
     ```
     """)
 
     st.markdown(r"""
-    ### 📊 Production Benchmark Comparison Matrix (May 2016 Holdout)
-    *Evaluated on 5,000 May 2016 Santander temporal holdout queries against 15 financial products + Class 0 ("Hold / Do Nothing") on NVIDIA RTX 3090 GPU.*
-
-    | Architecture / Configuration | Non-Buyer Hold Rate | Buyer Top-1 Sniper | Overall Top-1 Acc | GPU Passes Saved % | **Conditional Alert MAP@7** | Unconditional Cached MAP@7 | Coverage-Weighted MAP@7 |
-    | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-    | **Original Baseline (5k Default, 40% C0)** | 95.34% | 39.72% | 64.08% | 0.0% | **0.8522** | 0.7284 | 0.4412 |
-    | **73.9k Context (Raw Argmax, No Gate)** | 71.05% | **61.28%** | 65.56% | 0.0% | **0.7811** | 0.7669 | 0.7005 |
-    | **73.9k Context + Relaxed ($\gamma=0.15, \theta_n=6.0, \theta_c=1.8$)** | 83.65% | 55.30% | 67.72% | 31.0% | **0.8121** | 0.7669 | 0.6142 |
-    | **73.9k Context [Candidate A] ($\gamma=0.20, \theta_n=6.0, \theta_c=1.8$)** | **84.70%** | **54.27%** | **67.60%** | **42.3%** | **0.8144** | **0.7669** | **0.6008** |
-    | **73.9k Context [Candidate B] ($\gamma=0.25, \theta_n=6.0, \theta_c=1.8$)** | 87.35% | 52.63% | **67.84%** | 49.1% | **0.8176** | 0.7669 | 0.5820 |
-    | **73.9k Context [Candidate C] ($\gamma=0.30, \theta_n=6.0, \theta_c=1.8$)** | **91.05%** | **49.57%** | **67.74%** | **55.6%** | **0.8198** | **0.7669** | **0.5476** |
-    | **73.9k Context + Conservative ($\gamma=0.40, \theta_n=6.0, \theta_c=1.8$)** | 93.33% | 44.41% | 65.84% | 62.0% | **0.8164** | 0.7669 | 0.4904 |
-
-    ---
-
-    ### 📐 The Three Distinct Ranking Metrics Explained
-    1. **Conditional Alert MAP@7 (0.8144 – 0.8198)**:
-       - Measures ranking precision strictly on customers who receive a live push alert (`prediction > 0`).
-       - Ensures that when a bank push notification is delivered, the relevant product is almost always ranked in the top 1–2 positions (99.1% Top-7 Hit Rate).
-    2. **Unconditional / Cached MAP@7 (0.7669)**:
-       - Measures ranking precision across the full top-7 product distribution computed by TabDPT for queries reaching Stage 2.
-       - Stored silently in Redis Feature Store (`recs:{customer_id}`) for downstream retrieval during passive banking sessions (+3.85 pp gain over baseline).
-    3. **Coverage-Weighted End-to-End MAP@7 (0.5476 – 0.6008)**:
-       - Treats suppressed queries as returning an empty recommendation list `[]` (strict $AP = 0.0$).
-       - Reflects the deliberate banking trade-off: intentionally trading raw coverage to guarantee high precision and eliminate customer notification fatigue.
-
-    ---
-
     ### ⚙️ Production Engineering Highlights
-    1. **Scaled 73,968 Uniform Context (`torch.bfloat16`, 18.9 MB)**:
-       - Exact uniform balance of `16 classes × 4,623 rows`, using 100% of historical mortgage records with zero oversampling or synthetic distortion.
-    2. **Stage 1 CPU LightGBM Gatekeeper (`ROC-AUC = 0.8912`)**:
-       - Intercepts streaming non-buyer traffic in `< 0.002 ms` on CPU. Completely bypasses the GPU for 42.3% to 55.6% of queries.
-    3. **Stage 2 GPU TabDPT Foundation Model + Precomputed KV-Cache**:
-       - 32-layer column-attention tabular transformer. Precomputed KV-cache drops attention inference down to **< 20 ms** on RTX 3090 GPU.
-    4. **Gate 1C Per-Class Odds Ratio Calibration**:
-       - Tightened per-class odds ratio calibration ($\theta_{\text{clean}} = 1.8, \theta_{\text{noisy}} = 6.0$) suppresses noisy product sinks (`current_account`, `particular_plus`, `funds`, `long_term_deposits`, `taxes`).
-    5. **Dual-γ Streaming Routing & In-App Dynamic Dialog (`@st.dialog`)**:
-       - Candidate A updates silent profile cache, while Candidate C delivers high-impact push notifications directly into the user session when matching trigger context.
+    1. **100% Native Polars Feature Pipeline**:
+       - Cleans multi-year transactional banking data (~2.4 GB) and engineers 80 features (lag-1/2 holdings, velocity deltas, composite bundles, seasonality) with zero JVM dependency.
+    2. **Online Redis Feature Store & Streams**:
+       - Compact 512-byte FP32 vectors with sub-0.1ms point lookups (0.080 ms) and durable pub/sub event logs via Redis Streams (`stream:customer_events`).
+    3. **Stage 1 CPU LightGBM Gatekeeper (`ROC-AUC = 0.8912`)**:
+       - Intercepts non-buyer traffic in `< 0.002 ms` on CPU, completely bypassing GPU TabDPT inference on 42.3% to 55.6% of streaming queries.
+    4. **Stage 2 GPU TabDPT Serving + Precomputed KV-Cache**:
+       - 32-layer column-attention tabular transformer served via Triton gRPC against the 73,968 scaled uniform context. KV-caching provides a **26.2× speedup** (<20 ms).
+    5. **Odds-Ratio Calibration (ORC) Gate**:
+       - Per-class odds ratio calibration ($\theta_{\text{clean}} = 1.8, \theta_{\text{noisy}} = 6.0$) suppresses noisy product sinks (`current_account`, `particular_plus`, `funds`, `taxes`), preserving top-tier precision.
+    6. **Dual-Predictor Next-Best-Action Routing**:
+       - Automatically bifurcates into the **Cache Predictor** (silently updating `recs:{customer_id}` with 54.3% sniper precision) and the **Live Predictor** (delivering real-time in-app alerts with 91.0% hold safety and 0.8198 Alert MAP@7).
     """)

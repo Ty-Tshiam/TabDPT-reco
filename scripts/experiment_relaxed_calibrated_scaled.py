@@ -67,8 +67,12 @@ def run_relaxed_calibrated_experiment(device: str = "cuda"):
 
     # 2. Load 73,968 Context Tensor
     print("[2/5] Loading 73,968-row context tensor...")
-    ctx_path = DATA_DIR / "tensors" / "context_scaled_73968.pt"
-    y_ctx_path = DATA_DIR / "tensors" / "y_scaled_73968.pt"
+    ctx_path = DATA_DIR / "tensors" / "context.pt"
+    if not ctx_path.exists():
+        ctx_path = DATA_DIR / "tensors" / "context_scaled_73968.pt"
+    y_ctx_path = DATA_DIR / "tensors" / "y.pt"
+    if not y_ctx_path.exists():
+        y_ctx_path = DATA_DIR / "tensors" / "y_scaled_73968.pt"
     X_ctx = torch.load(ctx_path, map_location="cpu").to(torch.float32).numpy()
     y_ctx = torch.load(y_ctx_path, map_location="cpu").to(torch.long).numpy()
     print(f"  Context loaded: shape={X_ctx.shape}, classes={len(np.unique(y_ctx))}.\n")
