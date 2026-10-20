@@ -19,58 +19,65 @@ The platform scales from high-throughput tabular feature engineering to low-late
 
 ```mermaid
 flowchart TD
-    subgraph Offline["Offline Data & Tensor Pipeline (100% Native Polars)"]
+    subgraph Offline["1. Offline Data & Precomputed Acceleration (100% Native Polars)"]
         direction TB
-        raw["data/raw/train_ver2.csv (~2.4 GB)"] --> S1["Stage 1: Polars Feature Engineering<br/>(80 lag1/lag2 holdings, velocity deltas, bundles, seasonality)"]
-        S1 --> S2["Stage 2: Categorical Encoding & Global Normalization"]
-        S2 --> S3["Stage 3: Uniform Class Subsampling & 128-dim Export"]
-        S3 --> Tensors["73,968 Scaled Uniform Context<br/>(16 classes × 4,623 rows | context.pt & y.pt)"]
-        Tensors --> KVCacheGen["scripts/build_kv_cache.py"]
-        KVCacheGen --> KV["Precomputed Context KV-Cache<br/>context_kv_cache.pt"]
-        S1 -.-> SyncFS["Feature Store Sync<br/>(scripts/sync_features_to_redis.py)"]
-        S2 -.-> SyncFS
-        S2 --> LGBM_Train["Stage 1 CPU Gatekeeper Training<br/>(scripts/train_and_save_lgbm_gatekeeper.py)"]
-        LGBM_Train --> LGBM_Model[("LightGBM Model Artifact<br/>lgbm_gatekeeper.pkl & .txt<br/>ROC-AUC: 0.8912")]
+        raw["Raw Banking Data<br/>train_ver2.csv (2.4 GB)"] --> S1["Polars Feature Engineering<br/>(80 lag1/lag2 holdings, velocity deltas, bundles, seasonality)"]
+        S1 --> S2["Categorical Encoding &amp; Normalization"]
+        S2 --> S3["Uniform Class Subsampling<br/>(16 classes &times; 4,623 rows)"]
+        S3 --> Tensors["73,968 Scaled Context<br/>(context.pt &amp; y.pt)"]
+        Tensors --> KVCacheGen["Precompute KV-Cache<br/>(scripts/build_kv_cache.py)"]
+        KVCacheGen --> KV["Precomputed Attention KV-Cache<br/>context_kv_cache.pt (26.2x Speedup)"]
+        S1 -.-> SyncFS["Feature Sync to Redis<br/>(scripts/sync_features_to_redis.py)"]
+        S2 --> LGBM_Train["Train Gatekeeper<br/>(scripts/train_and_save_lgbm_gatekeeper.py)"]
+        LGBM_Train --> LGBM_Model[("LightGBM Model Artifact<br/>lgbm_gatekeeper.pkl<br/>ROC-AUC: 0.8912")]
     end
 
-    subgraph Store["Online Feature Store (Redis)"]
+    subgraph OnlineServing["2. Real-Time 3-Stage Cascaded Serving Pipeline"]
         direction TB
-        SyncFS --> RedisFS[("Redis Feature Store<br/>feature_store:customer:{id}<br/>512B FP32 Base64 Vectors & Holdings<br/>Latency: 0.080 ms")]
+        
+        subgraph Ingestion["Event Ingestion &amp; Context Retrieval"]
+            Portal["Customer Online Bank Portal<br/>(Deposit, Wire, Bill Pay, Inquiry)"] -->|"XADD"| StreamIn[("Redis Stream<br/>stream:customer_events")]
+            StreamIn -->|"XREADGROUP"| Worker["Streaming Event Worker<br/>(src/streaming/event_processor.py)"]
+            SyncFS -.-> RedisFS[("Redis Feature Store<br/>feature_store:customer:id<br/>512B FP32 Vector (0.080 ms)")]
+            Worker <-->|"Fast Point Lookup (&lt;0.1 ms)"| RedisFS
+        end
+
+        subgraph Cascade["3-Stage Next-Best-Action Cascade"]
+            LGBM_Model -.->|"Load on Startup"| Stage1
+            Worker --> Stage1{"Stage 1: CPU Gatekeeper<br/>LightGBM (p_buy propensity)"}
+            
+            Stage1 -->|"p_buy &lt; 0.20<br/>(42.3% - 55.6% traffic)"| CPU_Hold["Stage 1 CPU Hold<br/>(GPU bypassed in &lt;0.002 ms)"]
+            
+            Stage1 -->|"p_buy &ge; 0.20<br/>(Query: 1x1x128)"| Triton["Triton Server (Port 8001)<br/>TabDPT + Context KV-Cache<br/>Serving Latency: &lt; 20 ms"]
+            KV -.->|"Mounted"| Triton
+            
+            Triton -->|"Probabilities [Batch, 16]"| Stage2{"Stage 2: ORC Gate<br/>Odds-Ratio Calibration<br/>(&theta;_noisy=6.0, &theta;_clean=1.8)"}
+            
+            Stage2 -->|"Odds Ratio &le; &theta;"| ORC_Hold["ORC Gate Hold<br/>(Suppressed noisy false positives)"]
+            
+            Stage2 -->|"Odds Ratio &gt; &theta;<br/>(Filter held products)"| Stage3{"Stage 3: NBA Relevance Routing<br/>Action Relevance Matrix"}
+            
+            Stage3 -->|"Live Predictor<br/>(p_buy &ge; 0.30 &amp; Trigger Match)"| LiveAlert["🔥 Live Push Alert<br/>(91.0% Hold Safety, 0.8198 Alert MAP@7)"]
+            Stage3 -->|"Cache Predictor<br/>(p_buy &ge; 0.20 or passive action)"| SilentUpdate["💾 Cache Predictor<br/>(54.3% Sniper Precision)"]
+        end
+
+        subgraph Persistence["Unified Dispatch &amp; Telemetry"]
+            LiveAlert --> Dispatch["publish_reco()<br/>Unified Dispatcher"]
+            SilentUpdate --> Dispatch
+            CPU_Hold --> Dispatch
+            ORC_Hold --> Dispatch
+
+            Dispatch -->|"Durable Stream Log (All Events)"| StreamOut[("Redis Stream<br/>stream:recommendations")]
+            Dispatch -->|"TTL Cache (Active &amp; Silent Recs)"| RecsCache[("Redis Cache<br/>recs:customer_id")]
+        end
     end
 
-    subgraph Serving["High-Throughput Model Serving Layer"]
+    subgraph UI_View["3. Presentation &amp; Telemetry (Streamlit Port 8501)"]
         direction TB
-        KV --> Triton["Triton Inference Server / Standalone gRPC<br/>(Port 8001 | KServe v2 Protocol)"]
-        Triton --> ModelEngine["TabDPT Model (32 Layers) + Attention KV-Cache<br/>Latency: < 20ms | Zero Context Query FLOPs"]
-    end
-
-    subgraph Streaming["Real-Time Streaming Subsystem (Redis Streams)"]
-        direction TB
-        UI_Action["Customer Event Trigger<br/>(e.g. Salary Deposit, Wire Transfer, Branch Inquiry)"] -->|XADD| StreamIn[("stream:customer_events")]
-        StreamIn -->|XREADGROUP| Worker["Streaming Event Worker<br/>(src/streaming/event_processor.py)"]
-        Worker -->|1. Fast Point Lookup < 0.1ms| RedisFS
-        LGBM_Model -.->|Load on Worker Startup| Worker
-
-        Worker --> Gate1{"Stage 1: CPU Gatekeeper<br/>p_buy = P(Buy | X_80)<br/>p_buy >= 0.20 ?"}
-        Gate1 -->|p_buy < 0.20<br/>(42.3% - 55.6% Traffic)| CPU_Hold["Skip GPU (Hold / Class 0)<br/>Latency: < 0.002 ms on CPU"]
-
-        Gate1 -->|p_buy >= 0.20<br/>(QUERY_FEATURES: 1x1x128)| Triton
-        ModelEngine -->|PROBABILITIES: 1x16| ORC_Gate{"Stage 2: Odds-Ratio Calibration (ORC) Gate<br/>Odds Ratio > theta_gate?<br/>(theta_noisy=6.0, theta_clean=1.8)"}
-
-        ORC_Gate -->|Odds Ratio <= theta| Stage2_Hold["Suppress to Class 0 (Hold)<br/>Eliminate Noisy False Positives"]
-
-        ORC_Gate -->|Odds Ratio > theta| DualPredictor{"Stage 3: Dual-Predictor & NBA Routing"}
-        DualPredictor -->|Live Predictor<br/>p_buy >= 0.30 & Trigger Match| StreamOut[("stream:recommendations<br/>(Active Push Alert | 91.0% Hold Safety)")]
-        DualPredictor -->|Cache Predictor<br/>p_buy >= 0.20| Cache[("recs:{customer_id}<br/>(Silent Profile Cache | 54.3% Sniper)")]
-    end
-
-    subgraph Presentation["Presentation & Operations"]
-        direction TB
-        StreamOut --> UI["Executive Demo Dashboard<br/>(Streamlit: Port 8501)"]
-        Cache --> UI
-        UI -.->|Simulate Events| UI_Action
-        UI -.->|Claim Product: Atomic Mutate| RedisFS
-        Worker -.-> MLflow[("MLflow Tracking & Registry<br/>sqlite:///mlflow.db")]
+        StreamOut --> Telemetry["Redis Stream &amp; Telemetry Monitor<br/>(p50/p95 latency, PSI catalog stability, Live Event Audit Trail)"]
+        RecsCache --> NBAHub["AI &amp; Next-Best-Action Hub<br/>(Propensity gauges, decision status, top-7 ranking)"]
+        LiveAlert -.->|"Dynamic Dialog (@st.dialog)"| Portal
+        Portal -.->|"1-Click Claim: Atomic Mutate"| RedisFS
     end
 ```
 
