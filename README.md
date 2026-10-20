@@ -87,7 +87,7 @@ flowchart TD
 
 - **3-Stage Production Cascaded Serving**:
   - **Stage 1 (CPU LightGBM Gatekeeper, `< 0.002 ms`)**: Computes binary purchase propensity $p_{\text{buy}}$ on CPU with `ROC-AUC = 0.8912`. Intercepts **42.3% to 55.6%** of non-buyer events on CPU before touching the GPU, completely eliminating unnecessary GPU forward passes.
-  - **Stage 2 (GPU TabDPT Foundation Model + Odds-Ratio Calibration Gate)**: Single-pass transformer inference against an exact **73,968-row scaled uniform context** on RTX 3090 GPU. The Odds-Ratio Calibration (ORC) Gate applies asymmetric odds-ratio suppression ($\theta_{\text{noisy}} = 6.0, \theta_{\text{clean}} = 1.8$) to eliminate noisy sink false positives (`current_account`, `particular_plus`, `funds`, `long_term_deposits`, `taxes`).
+  - **Stage 2 (GPU TabDPT Foundation Model + Odds-Ratio Calibration Gate)**: Single-pass transformer inference against an exact **73,968-row scaled uniform context** on RTX 3090 GPU. The Odds-Ratio Calibration (ORC) Gate applies asymmetric odds-ratio suppression (\(\theta_{\mathrm{noisy}} = 6.0,\ \theta_{\mathrm{clean}} = 1.8\)) to eliminate noisy sink false positives (`current_account`, `particular_plus`, `funds`, `long_term_deposits`, `taxes`).
   - **Stage 3 (Dual-Predictor Streaming Routing)**: Dual operating regimes simultaneously powering the **Cache Predictor** ($\gamma = 0.20$, **54.3% Buyer Top-1 Sniper** precision) for silent profile updates and the **Live Predictor** ($\gamma = 0.30$, **91.0% Non-Buyer Hold Safety**, **0.8198 Alert MAP@7**) for live customer push alerts.
 - **73,968 Scaled Uniform Context Tensor**:
   - Resolved extreme tabular imbalance by assembling an exact 16-class uniform context (`16 classes × 4,623 rows`, `torch.bfloat16`, 128 dimensions).
