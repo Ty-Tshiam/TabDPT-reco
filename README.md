@@ -139,7 +139,7 @@ Implemented in `src/streaming/event_processor.py`:
   - If $p_{\text{buy}} < \gamma_{\text{cache}}$ ($0.20$), instantly returns Class 0 ("Do Nothing / Hold"), **bypassing the GPU on 42.3% to 55.6% of streaming traffic**.
 - **Stage 2 (GPU TabDPT Foundation Model + Odds-Ratio Calibration Gate)**:
   - Executes single-pass inference against the 73.9k uniform context tensor.
-  - Computes odds ratio against Class 0: $\text{odds\_ratio} = \frac{P(\text{cand})}{\max(P(0), 10^{-8})}$.
+  - Computes odds ratio against Class 0: \(\theta_{\mathrm{noisy}} = 6.0,\ \theta_{\mathrm{clean}} = 1.8\).
   - The Odds-Ratio Calibration (ORC) Gate applies asymmetric thresholding: $\theta_{\text{noisy}} = 6.0$ for sink classes (`current_account`, `particular_plus`, `funds`, `long_term_deposits`, `taxes`) and $\theta_{\text{clean}} = 1.8$ for clean snipers.
   - Suppresses candidate product to Class 0 if odds ratio is insufficient, eliminating false positives.
 - **Stage 3 (Dual-Predictor & Next-Best-Action Routing)**:
